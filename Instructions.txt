@@ -1,0 +1,10 @@
+1. MATLAB Phase (Data Generation & Validation)
+Open MATLAB, ensure your "Current Folder" is the project directory, and type these in the Command Window:
+run_sweep
+plot_results
+
+2. Python ML Phase (Digital Twin Baseline)
+Open a PowerShell terminal inside your project folder (C:\Users\vmj07\OneDrive\Desktop\Lectures\Material\SEMESTER 3\SDCS\Project):
+cd python_ml
+.\venv\Scripts\activate
+python initial_baseline_model.py

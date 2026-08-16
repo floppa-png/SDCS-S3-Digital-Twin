@@ -1,0 +1,13 @@
+# Python
+python_ml/venv/
+python_ml/__pycache__/
+*.pyc
+
+# Presentations
+*.pdf
+*.pptx
+~$*.pptx
+
+# MATLAB temporary files
+*.asv
+*.autosave
