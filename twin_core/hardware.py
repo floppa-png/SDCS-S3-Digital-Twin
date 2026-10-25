@@ -192,8 +192,9 @@ class PlutoBridge:
 
     def send_tx(self, iq: np.ndarray, peak_target: float = 0.7) -> bool:
         """
-        Apply IF offset (+150 kHz) and send burst/frame to GRC PUSH socket.
+        Apply IF offset (+150 kHz) and send burst/frame to GRC/Pluto PUSH socket.
         Normalizes peak amplitude to peak_target (<= 0.7) to avoid DAC clipping.
+        Pads to exact multiple of 20 samples for phase-continuous cyclic wraparound.
         """
         if len(iq) == 0:
             return False
@@ -205,24 +206,26 @@ class PlutoBridge:
         else:
             tx_norm = iq
             
-        # Sustained burst: tile frame to >= 32768 samples (~32.7 ms)
-        # Prevents Pluto DAC buffer starvation/underflow during 10 Hz frame loop
-        if len(tx_norm) < 32768:
-            reps = int(np.ceil(32768 / len(tx_norm)))
-            tx_norm = np.tile(tx_norm, reps)
-            
-        n = len(tx_norm)
-        t = np.arange(n) / float(self.fs)
-        up_rot = np.exp(1j * (2.0 * np.pi * self.f_if * t + self._tx_phase))
-        self._tx_phase = (self._tx_phase + 2.0 * np.pi * self.f_if * n / float(self.fs)) % (2.0 * np.pi)
+        # Sustained burst: tile frame to >= 65536 samples
+        reps = max(1, int(np.ceil(65536 / len(tx_norm))))
+        tiled = np.tile(tx_norm, reps)
         
-        tx_if = (tx_norm * up_rot).astype(np.complex64)
+        # Pad to exact multiple of 20 samples (period of 150 kHz IF at 1 MHz sample rate)
+        gcd_period = 20
+        pad_len = int(np.ceil(len(tiled) / gcd_period)) * gcd_period
+        if pad_len > len(tiled):
+            tiled = np.pad(tiled, (0, pad_len - len(tiled)), mode='wrap')
+            
+        n = len(tiled)
+        t = np.arange(n) / float(self.fs)
+        up_rot = np.exp(1j * 2.0 * np.pi * self.f_if * t)
+        tx_if = (tiled * up_rot).astype(np.complex64)
         
         try:
             self.tx_sock.send(tx_if.tobytes(), flags=zmq.NOBLOCK)
             return True
         except zmq.Again:
-            # Drop frame if GRC is backpressured
+            # Drop frame if socket is backpressured
             return False
         except Exception:
             return False

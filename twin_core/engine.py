@@ -46,6 +46,7 @@ class Engine:
         self.rolling = RollingMetrics()
         self.twin = DigitalTwin(fs=fs)
         self.bridge = PlutoBridge(fs=fs)
+        self._last_hw_tx_key: Optional[Tuple[Any, ...]] = None
         
         # Autopilot & Randomizer
         self.randomizer_enabled = False
@@ -237,6 +238,7 @@ class Engine:
             self.rolling.reset()
             self.twin._cache.clear()
             self.bridge.flush()
+            self._last_hw_tx_key = None
             
             # Sync RF parameters to Pluto if in hardware mode
             if self.mode == 'pluto':
@@ -280,6 +282,7 @@ class Engine:
             self.rolling.reset(self.cfg_version)
             self.twin._cache.clear()
             self.bridge.flush()
+            self._last_hw_tx_key = None
             
         if is_attack and prev_mod != mod and mod == 'FSK':
             self.fdia_mitigated_count += 1
@@ -322,6 +325,7 @@ class Engine:
             self.rolling.reset(self.cfg_version)
             self.twin._cache.clear()
             self.bridge.flush()
+            self._last_hw_tx_key = None
             
             # Find predicted score gain
             target_score = 0
@@ -370,6 +374,7 @@ class Engine:
             self.rolling.reset(self.cfg_version)
             self.twin._cache.clear()
             self.bridge.flush()
+            self._last_hw_tx_key = None
             
         sc_name = SCENARIO_METADATA.get(preset_name, {}).get('name', preset_name)
         self.log_event("preset", f"Scenario selected: {sc_name}")
@@ -470,6 +475,7 @@ class Engine:
             self.mode = mode
             self.rolling.reset()
             self.bridge.flush()
+            self._last_hw_tx_key = None
         if mode == 'pluto':
             self.bridge.ensure_bridge_running()
         self.log_event("mode_change", f"Operating mode set to {mode.upper()}")
@@ -536,8 +542,12 @@ class Engine:
                     rx_iq = None
                     rx_res = None
                     if mode == 'pluto' and self.bridge.link_up:
-                        self.bridge.send_tx(tx_frame.iq)
-                        time.sleep(0.015)
+                        tx_key = (cfg.modulation, cfg.data_rate, cfg.rolloff, cfg.fsk_h, cfg.source_type, cfg.alloc_bw, getattr(cfg, 'fdia_active', False))
+                        if tx_key != self._last_hw_tx_key:
+                            self.bridge.send_tx(tx_frame.iq)
+                            self._last_hw_tx_key = tx_key
+                            time.sleep(0.04)
+                            
                         rx_raw = self.bridge.get_recent_rx(max(16384, min(65536, int(len(tx_frame.iq) * 1.5))))
                         if len(rx_raw) >= 1024 and not np.all(rx_raw == 0):
                             if getattr(cfg, 'fdia_active', False):
@@ -557,8 +567,12 @@ class Engine:
                     rx_iq = None
                     rx_res = None
                     if mode == 'pluto' and self.bridge.link_up:
-                        self.bridge.send_tx(tx_iq)
-                        time.sleep(0.02)
+                        tx_key = (cfg.modulation, cfg.msg_bw, cfg.am_index, cfg.fm_beta, cfg.source_type, cfg.alloc_bw, getattr(cfg, 'fdia_active', False))
+                        if tx_key != self._last_hw_tx_key:
+                            self.bridge.send_tx(tx_iq)
+                            self._last_hw_tx_key = tx_key
+                            time.sleep(0.04)
+                            
                         rx_raw = self.bridge.get_recent_rx(max(16384, len(tx_iq) * 2))
                         if len(rx_raw) >= 1024 and not np.all(rx_raw == 0):
                             if getattr(cfg, 'fdia_active', False):
@@ -601,10 +615,30 @@ class Engine:
                 
                 # Visualizations
                 # 1. Constellation (Calibrated Decision-Directed Equalizer & VSA Slicer)
-                const_pts = AdaptiveEqualizer.synthesize_constellation(
-                    cfg.modulation, cfg, metrics, rx_res, n_points=400,
-                    active_scenario=getattr(self, 'active_scenario', None)
-                )
+                if mode == 'pluto' and self.bridge.link_up and rx_res is not None:
+                    # In Hardware-In-The-Loop mode, display the REAL measured over-the-air symbols!
+                    rec_syms = rx_res.get('recovered_symbols')
+                    if rec_syms is not None and len(rec_syms) >= 30:
+                        pwr = float(np.mean(np.abs(rec_syms)**2))
+                        sc = 1.0 / np.sqrt(max(1e-12, pwr))
+                        norm_syms = rec_syms * sc
+                        if len(norm_syms) > 400:
+                            step = len(norm_syms) // 400
+                            sub_pts = norm_syms[::step][:400]
+                        else:
+                            sub_pts = norm_syms
+                        const_pts = [[round(float(np.real(s)), 4), round(float(np.imag(s)), 4)] for s in sub_pts]
+                    else:
+                        # Fallback for analog or unsynced: display downsampled baseband IQ
+                        raw_sub = rx_iq[:1600:4]
+                        pwr = float(np.mean(np.abs(raw_sub)**2))
+                        sc = 1.0 / np.sqrt(max(1e-12, pwr))
+                        const_pts = [[round(float(np.real(s) * sc), 4), round(float(np.imag(s) * sc), 4)] for s in raw_sub[:400]]
+                else:
+                    const_pts = AdaptiveEqualizer.synthesize_constellation(
+                        cfg.modulation, cfg, metrics, rx_res, n_points=400,
+                        active_scenario=getattr(self, 'active_scenario', None)
+                    )
                     
                 # 2. Welch PSD (256 bins)
                 if len(rx_iq) >= 256:

@@ -249,7 +249,7 @@ class Receiver:
             carrier0 = np.exp(-1j * 2.0 * np.pi * f0 * t_sym)
             carrier1 = np.exp(-1j * 2.0 * np.pi * f1 * t_sym)
             
-            if (psr < 4.0 or getattr(cfg, 'fdia_active', False)) and tx_frame.preamble_start is not None:
+            if not is_hw_buffer and (psr < 4.0 or getattr(cfg, 'fdia_active', False)) and tx_frame.preamble_start is not None:
                 p_raw_start = tx_frame.preamble_start + 95 * sps
             else:
                 p_raw_start = best_idx + 95 * sps

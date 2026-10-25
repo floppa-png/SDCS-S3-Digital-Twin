@@ -90,13 +90,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mode state
     const btnSim = document.getElementById('btn-mode-sim');
     const btnPluto = document.getElementById('btn-mode-pluto');
+    const labelLink = document.getElementById('label-link');
+    const dotLink = document.getElementById('dot-link');
     if (btnSim && btnPluto) {
       if (state.mode === 'pluto') {
         btnPluto.classList.add('active');
         btnSim.classList.remove('active');
+        if (labelLink && dotLink) {
+          if (state.link_up) {
+            dotLink.classList.add('active');
+            labelLink.textContent = 'PLUTO: LINK UP';
+          } else {
+            dotLink.classList.remove('active');
+            labelLink.textContent = 'PLUTO: CONNECTING...';
+          }
+        }
       } else {
         btnSim.classList.add('active');
         btnPluto.classList.remove('active');
+        if (labelLink && dotLink) {
+          dotLink.classList.remove('active');
+          labelLink.textContent = 'PLUTO: SIM';
+        }
       }
     }
   });

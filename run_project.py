@@ -29,22 +29,26 @@ def main():
         env["SDCS_MODE"] = "pluto"
         env["PLUTO_BRIDGE_MANAGED"] = "1"
         
-        # Wait until Pluto bridge XML-RPC is online and ready
-        import socket
+        # Wait until Pluto bridge XML-RPC is online and Pluto SDR hardware is streaming
+        import xmlrpc.client
         t_wait = time.time()
         bridge_ready = False
-        while time.time() - t_wait < 8.0:
+        while time.time() - t_wait < 12.0:
             if p_bridge.poll() is not None:
                 print(f"[Error] Pluto native bridge exited prematurely (code {p_bridge.poll()}).")
                 break
             try:
-                with socket.create_connection(('127.0.0.1', 8090), timeout=0.3):
+                proxy = xmlrpc.client.ServerProxy("http://127.0.0.1:8090")
+                if proxy.is_ready():
                     bridge_ready = True
                     break
             except Exception:
-                time.sleep(0.3)
+                pass
+            time.sleep(0.4)
         if bridge_ready:
-            print(" -> Pluto hardware bridge is online and ready!")
+            print(" -> Pluto hardware bridge is online, SDR connected and streaming!")
+        else:
+            print(" -> [Notice] Pluto bridge starting up; backend will link up once SDR completes init.")
     else:
         print("\n[Mode] High-Fidelity Simulation Mode (Default)")
 

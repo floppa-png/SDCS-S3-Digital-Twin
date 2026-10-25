@@ -214,6 +214,10 @@ class PlutoNativeBridge:
                     print(f"[PlutoNative] Error setting rf_bw: {e}", flush=True)
         return True
 
+    def is_ready(self):
+        """XML-RPC readiness check: returns True when SDR is connected and streaming loops are active."""
+        return bool(self.sdr is not None and self.running)
+
     def start(self):
         self.running = True
         self.rx_thread = threading.Thread(target=self._rx_loop, daemon=True, name="PlutoNativeRx")

@@ -40,8 +40,8 @@
       </div>
 
       <div class="status-pill" id="pill-link">
-        <span class="status-dot" id="dot-link"></span>
-        <span id="label-link">PLUTO: SIM</span>
+        <span class="status-dot {% if mode == 'pluto' and link_up %}active{% endif %}" id="dot-link"></span>
+        <span id="label-link">{% if mode == 'pluto' %}{% if link_up %}PLUTO: LINK UP{% else %}PLUTO: CONNECTING...{% endif %}{% else %}PLUTO: SIM{% endif %}</span>
       </div>
 
       <div class="status-pill" id="pill-twin">
@@ -60,8 +60,8 @@
       </button>
 
       <div class="segmented-control" id="control-mode">
-        <button type="button" class="segmented-btn active" id="btn-mode-sim" data-mode="sim">SIM</button>
-        <button type="button" class="segmented-btn" id="btn-mode-pluto" data-mode="pluto">PLUTO</button>
+        <button type="button" class="segmented-btn {% if mode != 'pluto' %}active{% endif %}" id="btn-mode-sim" data-mode="sim">SIM</button>
+        <button type="button" class="segmented-btn {% if mode == 'pluto' %}active{% endif %}" id="btn-mode-pluto" data-mode="pluto">PLUTO</button>
       </div>
     </div>
   </header>

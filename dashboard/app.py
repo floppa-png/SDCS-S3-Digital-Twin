@@ -82,7 +82,7 @@ def validate_content_type():
 
 @app.route('/')
 def index():
-    return render_template('index.html', version=BUILD_VERSION)
+    return render_template('index.html', version=BUILD_VERSION, mode=engine.mode, link_up=engine.bridge.link_up)
 
 @app.route('/api/state', methods=['GET'])
 def get_state():
