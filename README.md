@@ -2,7 +2,7 @@
 
 An industrial-grade, physics-consistent **Digital Twin** and hardware-in-the-loop (HITL) modulation benchmarking suite for **Software Defined Communication Systems (SDCS)**.
 
-The platform continuously evaluates, scores, and predicts optimal modulation schemes across the 8 taught analog and digital modulations under realistic physical impairments (AWGN, time-varying Rayleigh/Rician fading, Carrier Frequency Offset (CFO), and Wiener phase noise).
+The platform continuously evaluates, scores, and predicts optimal modulation schemes across the 7 taught analog and digital modulations under realistic physical impairments (AWGN, time-varying Rayleigh/Rician fading, Carrier Frequency Offset (CFO), and Wiener phase noise).
 
 ---
 
@@ -30,29 +30,28 @@ graph TD
         Pluto["ADALM-PLUTO SDR (Over-the-Air RF @ 2.4 GHz)"]
     end
 
-    UI -->|REST POST /api/*| Eng
-    Eng -->|Socket.IO Telemetry @ 10 Hz| Viz
-    Eng -->|Socket.IO Telemetry @ 10 Hz| Gauges
-    Twin -->|Socket.IO Prediction @ 1 Hz| Charts
-    Eng <--> DSP
-    DSP <--> Theory
-    Eng <-->|ZMQ :5556 (TX) / :5555 (RX)| Bridge
-    Bridge <-->|XML-RPC :8090 (LO/Gain/Atten)| GRC
-    Bridge <-->|ZMQ Complex IQ + 150 kHz IF| GRC
-    GRC <-->|IIO Driver| Pluto
+    UI -->|"REST POST /api/*"| Eng
+    Eng -->|"Socket.IO Telemetry @ 10 Hz"| Viz
+    Eng -->|"Socket.IO Telemetry @ 10 Hz"| Gauges
+    Twin -->|"Socket.IO Prediction @ 1 Hz"| Charts
+    Eng --- DSP
+    DSP --- Theory
+    Eng ---|"ZMQ Port 5556 TX / 5555 RX"| Bridge
+    Bridge ---|"XML-RPC Port 8090 LO/Gain/Atten"| GRC
+    Bridge ---|"ZMQ Complex IQ Baseband"| GRC
+    GRC ---|"IIO Hardware Driver"| Pluto
 ```
 
 ---
 
 ## 2. Supported Modulation Schemes
 
-The platform strictly supports the 8 core taught communication schemes:
+The platform strictly supports the 7 core taught communication schemes:
 
 | Modulation | Category | Bits/Symbol ($k$) | Description / Constellation |
 |---|---|---|---|
 | **BPSK** | Digital | 1 | Binary Phase Shift Keying ($\pm 1$, RRC shaped) |
 | **QPSK** | Digital | 2 | Quadrature Phase Shift Keying ($(\pm 1 \pm j)/\sqrt{2}$, Gray mapped) |
-| **16-QAM** | Digital | 4 | 16-state Quadrature Amplitude Modulation ($\{\pm 1, \pm 3\}/\sqrt{10}$) |
 | **ASK** | Digital | 1 | Amplitude Shift Keying / On-Off Keying ($\{0, \sqrt{2}\}$) |
 | **FSK** | Digital | 1 | Continuous-Phase Frequency Shift Keying (Tones $\pm h R_s / 2$) |
 | **AM_DSBSC** | Analog | — | Double-Sideband Suppressed-Carrier ($m(t) \cos \omega_c t$) |
@@ -84,8 +83,6 @@ $$\frac{E_b}{N_0}\text{ [dB]} = \frac{C}{N_0} - 10 \log_{10}(R_{b,\text{actual}}
 ### Theoretical Digital BER
 - **BPSK / QPSK in AWGN**:
   $$P_b = Q\left(\sqrt{2 \gamma_b}\right) = \frac{1}{2}\text{erfc}\left(\sqrt{\gamma_b}\right)$$
-- **16-QAM in AWGN** (Gray coded):
-  $$P_b \approx \frac{3}{8}\text{erfc}\left(\sqrt{\frac{4}{10}\gamma_b}\right)$$
 - **Non-Coherent Orthogonal FSK in AWGN**:
   $$P_b = \frac{1}{2}\exp\left(-\frac{\gamma_b}{2}\right)$$
 - **Rayleigh Fading**:
@@ -110,7 +107,7 @@ The total performance score (0 to 100) is evaluated across 6 normalized sub-scor
 2. **Rate Achievement ($S_{\text{rate}}$)**: $\text{Goodput} / \text{DataRate}_{\text{req}}$ (Digital) or $W'/W$ (Analog).
 3. **Spectral Fit ($S_{\text{bw}}$)**: $1.0$ if $B_{\text{occ}} \le B_{\text{alloc}}$, decaying exponentially if exceeded.
 4. **Power Margin ($S_{\text{pwr}}$)**: $\text{sigmoid}(\text{Margin}_{\text{dB}} / 3)$.
-5. **Receiver Complexity ($S_{\text{cplx}}$)**: ASK 0.95, AM-DSBTC 1.00, FSK 0.85, FM 0.80, BPSK 0.70, AM-DSBSC 0.65, QPSK 0.55, 16-QAM 0.35.
+5. **Receiver Complexity ($S_{\text{cplx}}$)**: ASK 0.95, AM-DSBTC 1.00, FSK 0.85, FM 0.80, BPSK 0.70, AM-DSBSC 0.65, QPSK 0.55.
 6. **PAPR Efficiency ($S_{\text{papr}}$)**: $\text{clip}(1 - \text{PAPR}_{\text{dB}} / 10, 0, 1)$.
 
 ### Profile Weights
@@ -137,7 +134,8 @@ Every taught modulation wins legitimately in its natural textbook operating regi
 | `iot_tag` | Low-Power Profile, $B$ 32 kHz, CFO $2000$ Hz | **ASK** | Diode envelope detector has lowest receiver complexity & power. |
 | `am_broadcast` | Analog, $B$ 11 kHz, CFO $800$ Hz, Phase Noise $10^\circ$ | **AM_DSBTC** | Envelope detector is immune to carrier frequency offset. |
 | `coherent_voice` | Analog, $B$ 11 kHz, SNR $12$ dB, Clean AWGN | **AM_DSBSC** | Full suppressed-carrier power efficiency without envelope thresholding. |
-| `fm_radio` | Analog, $B$ 200 kHz, SNR $20$ dB, Rayleigh $f_D = 50$ Hz | **FM** | Wideband FM gain ($3\beta^2 P_m \gamma$) exceeds AM limits above threshold. |
+| `fm_broadcast` | Analog, $B$ 200 kHz, SNR $20$ dB, Rayleigh $f_D = 50$ Hz | **FM** | Wideband FM gain ($3\beta^2 P_m \gamma$) exceeds AM limits above threshold. |
+| `fdia_attack` | Electronic Warfare: Swept Jamming & Phase Spoofing | **FSK** | Non-coherent energy detection immune to carrier disruption. |
 
 ---
 
