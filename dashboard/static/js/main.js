@@ -361,8 +361,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const isAttackActive = Boolean(frame.config?.fdia_active || (frame.metrics && frame.metrics.trust_score < 60));
       viz.renderConstellation(frame.viz.const, frame.mod, MOD_COLORS[frame.mod], isAttackActive);
       viz.renderSpectrum(frame.viz.psd_db, frame.viz.psd_f, (frame.metrics?.alloc_bw || 60000) / 1000);
-      viz.renderEyeDiagram(frame.viz.eye);
+      viz.renderEyeDiagram(frame.viz.eye, isAttackActive);
       viz.renderIqTrace(frame.viz.iq);
+
+      // Dynamic Eye / Scope Header Update based on Modulation
+      const eyeTitleEl = document.getElementById('label-eye-title');
+      const eyeSubEl = document.getElementById('label-eye-sub');
+      if (eyeTitleEl && eyeSubEl) {
+        const isAnalog = ['AM_DSBSC', 'AM_DSBTC', 'FM'].includes(frame.mod);
+        if (isAnalog) {
+          eyeTitleEl.textContent = 'Audio Waveform Scope (Demodulated)';
+          eyeSubEl.textContent = 'Baseband Audio';
+        } else {
+          eyeTitleEl.textContent = 'Eye Diagram (2 Symbol Span)';
+          eyeSubEl.textContent = 'In-Phase';
+        }
+      }
     }
   });
 

@@ -250,27 +250,29 @@ class DashboardVisualizers {
     return [r, g, b];
   }
 
-  renderEyeDiagram(traces) {
+  renderEyeDiagram(traces, isAttack = false) {
     if (!this.eyeCtx || !this.eyeCanvas) return;
     const w = this.eyeCanvas.width;
     const h = this.eyeCanvas.height;
     const cy = h / 2;
+    const cx = w / 2;
 
-    // Fade with alpha wash
-    this.eyeCtx.fillStyle = 'rgba(3, 6, 12, 0.20)';
+    // Fade with alpha wash (subtle red tint under attack)
+    this.eyeCtx.fillStyle = isAttack ? 'rgba(20, 4, 8, 0.22)' : 'rgba(3, 6, 12, 0.20)';
     this.eyeCtx.fillRect(0, 0, w, h);
 
-    // Centerline
-    this.eyeCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    // Centerlines & symbol clock boundary (50% center sampling instant)
+    this.eyeCtx.strokeStyle = isAttack ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.08)';
     this.eyeCtx.lineWidth = 1;
     this.eyeCtx.beginPath();
     this.eyeCtx.moveTo(0, cy); this.eyeCtx.lineTo(w, cy);
+    this.eyeCtx.moveTo(cx, 0); this.eyeCtx.lineTo(cx, h);
     this.eyeCtx.stroke();
 
     if (!traces || traces.length === 0) return;
 
-    this.eyeCtx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
-    this.eyeCtx.lineWidth = 1.2;
+    this.eyeCtx.strokeStyle = isAttack ? 'rgba(239, 68, 68, 0.65)' : 'rgba(34, 211, 238, 0.48)';
+    this.eyeCtx.lineWidth = 1.3;
 
     for (let t = 0; t < traces.length; t++) {
       const trace = traces[t];

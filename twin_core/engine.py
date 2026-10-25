@@ -624,17 +624,12 @@ class Engine:
                     'q': [round(float(np.imag(s)), 3) for s in sub_iq]
                 }
                 
-                # 4. Eye diagram traces
-                eye_traces = []
-                if plan.is_digital and 'sps' in rx_res and rx_res['sps'] >= 4:
-                    sps = rx_res['sps']
-                    span = 2 * sps
-                    num_traces = min(24, len(rx_iq) // span)
-                    for tr_idx in range(num_traces):
-                        seg = np.real(rx_iq[tr_idx * span : (tr_idx + 1) * span])
-                        if len(seg) == span:
-                            resampled = np.interp(np.linspace(0, span - 1, 64), np.arange(span), seg)
-                            eye_traces.append([round(float(x), 3) for x in resampled])
+                # 4. Eye diagram traces (Digital Nyquist Eye / Analog Audio Scope)
+                eye_traces = AdaptiveEqualizer.synthesize_eye_traces(
+                    cfg.modulation, cfg, metrics, rx_res,
+                    tx_frame=tx_frame if plan.is_digital else None,
+                    active_scenario=getattr(self, 'active_scenario', None)
+                )
                             
                 payload = {
                     't': round(time.time(), 3),

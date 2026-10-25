@@ -29,6 +29,7 @@ Thumbs.db
 *.pdf
 *.pptx
 ~$*.pptx
+~$*.docx
 
 # MATLAB temporary files
 *.asv

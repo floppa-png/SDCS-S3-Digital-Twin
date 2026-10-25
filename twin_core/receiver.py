@@ -416,6 +416,17 @@ class Receiver:
             # avoiding artificial fluctuations in multipath fading (e.g. urban tactical mobile)
             trust_score = 100 if (header_valid or psr >= 3.5) else 95
         
+        # Extract matched-filter payload samples for authentic eye diagram visualization
+        p_payload_start = best_idx + 95 * sps
+        p_payload_end = p_payload_start + n_symbols * sps
+        eye_sig = None
+        if p_payload_end <= len(rx_mf_eq):
+            eye_sig = np.real(rx_mf_eq[p_payload_start:p_payload_end])
+        elif len(rx_mf_eq) > p_payload_start + 2 * sps:
+            eye_sig = np.real(rx_mf_eq[p_payload_start:])
+        elif len(rx_norm) >= 2 * sps:
+            eye_sig = np.real(rx_norm[:min(len(rx_norm), 4000)])
+
         return {
             'ber': ber,
             'bit_errors': bit_errors,
@@ -432,7 +443,9 @@ class Receiver:
             'psr': float(psr),
             'trust_score': trust_score,
             'fdia_detected': fdia_detected,
-            'fdia_mitigated': fdia_mitigated
+            'fdia_mitigated': fdia_mitigated,
+            'sps': int(sps),
+            'eye_signal': eye_sig
         }
 
     def demodulate_analog_signal(self, rx_iq: np.ndarray, tx_msg: np.ndarray, cfg: TxConfig) -> Dict[str, Any]:
@@ -514,7 +527,9 @@ class Receiver:
             'recovered_msg': rx_filtered,
             'trust_score': trust_score,
             'fdia_detected': fdia_detected,
-            'fdia_mitigated': fdia_mitigated
+            'fdia_mitigated': fdia_mitigated,
+            'sps': 8,
+            'eye_signal': rx_filtered
         }
 
     @staticmethod
