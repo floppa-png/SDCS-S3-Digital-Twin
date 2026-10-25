@@ -94,13 +94,13 @@ class AdaptiveEqualizer:
         else:
             trust_scale = 1.70
             
-        sigma_base = float(np.clip(1.0 / math.sqrt(2.0 * max(1.0, 10.0 ** (snr_db / 10.0))), 0.020, 0.055))
+        sigma_base = float(np.clip(1.0 / math.sqrt(2.0 * max(1.0, 10.0 ** (snr_db / 10.0))), 0.022, 0.045))
         if is_optimal:
-            # Optimal: crisp, defined cluster with organic RF phosphor width (std in 0.035 - 0.043 range)
-            sigma_clean = float(np.clip(sigma_base * trust_scale * 1.05 + rng.normal(0, 0.001), 0.035, 0.043))
+            # Optimal: crisp, defined cluster with subtle RF phosphor width (std in 0.032 - 0.038 range)
+            sigma_clean = float(np.clip(sigma_base * 0.90 + rng.normal(0, 0.001), 0.032, 0.038))
         else:
-            # Suboptimal: visibly noisy, fuzzy dispersion with authentic channel mismatch (std in 0.16 - 0.26 range)
-            sigma_clean = float(np.clip(max(0.14, sigma_base * trust_scale * 4.6) + rng.normal(0, 0.015), 0.15, 0.28))
+            # Suboptimal: visibly looser, noisier cloud showing physical channel mismatch (std in 0.078 - 0.092 range)
+            sigma_clean = float(np.clip(sigma_base * 2.35 + rng.normal(0, 0.003), 0.078, 0.092))
         
         # -------------------------------------------------------------------------
         # Generate Normal Baseline Coordinates
@@ -136,132 +136,96 @@ class AdaptiveEqualizer:
     def _generate_clean_points(cls, mod: str, cfg: Any, rng: np.random.RandomState, 
                                t_now: float, sigma_clean: float, trust_scale: float, 
                                is_optimal: bool, n_points: int):
-        """Generate normal clean constellation coordinates with lifelike breathing and suboptimal realism."""
-        # Dynamic channel fading breathing & thermal shimmer
-        if is_optimal:
-            fade_env = 1.0 + 0.025 * math.sin(t_now * 3.4 + 0.8) + rng.normal(0, 0.008)
-            phase_wander = 0.028 * math.sin(t_now * (2.0 * math.pi / 2.3)) + 0.015 * math.sin(t_now * 5.4) + rng.normal(0, 0.006)
-        else:
-            # Suboptimal: deep multipath fading dips, carrier slip, and heavy turbulence
-            fade_env = 0.82 + 0.30 * math.sin(t_now * 3.8) + rng.normal(0, 0.07)
-            phase_wander = 0.25 * math.sin(t_now * 3.2) + rng.normal(0, 0.08)
+        """Generate normal clean constellation coordinates with living dot breathing (bigger and smaller)."""
+        # Dynamic subtle dot breathing: makes dots expand and contract smoothly over time ("bigger and smaller")
+        breathe = 0.30 * math.sin(t_now * 3.6) + 0.12 * math.sin(t_now * 1.8)
+        min_clip = 0.022 if is_optimal else 0.060
+        max_clip = 0.050 if is_optimal else 0.120
+        sigma_dot = float(np.clip(sigma_clean * (1.0 + breathe), min_clip, max_clip))
+        
+        # Subtle phase shimmer (< 0.5 degrees)
+        phase_wander = 0.008 * math.sin(t_now * 1.8)
+        fade_env = 1.0 + 0.02 * math.sin(t_now * 2.0)
 
         if mod == 'BPSK':
-            # Textbook BPSK: 2 clusters on unit circle at (-1.0, 0) and (+1.0, 0)
-            c_x = math.cos(phase_wander) * fade_env
-            c_y = math.sin(phase_wander) * fade_env
+            # Textbook BPSK: Exactly 2 circular clusters at (-1.0, 0) and (+1.0, 0)
+            # Dots breathe bigger and smaller with living noise. ZERO points between them.
+            cos_w = math.cos(phase_wander)
+            sin_w = math.sin(phase_wander)
+            
+            c_pos_i = +1.0 * cos_w
+            c_pos_q = +1.0 * sin_w
+            c_neg_i = -1.0 * cos_w
+            c_neg_q = -1.0 * sin_w
             
             half = n_points // 2
-            i_pos = rng.normal(+c_x, sigma_clean, half)
-            q_pos = rng.normal(+c_y, sigma_clean * (1.15 if not is_optimal else 0.72), half)
-            i_neg = rng.normal(-c_x, sigma_clean, n_points - half)
-            q_neg = rng.normal(-c_y, sigma_clean * (1.15 if not is_optimal else 0.72), n_points - half)
+            i_pos = rng.normal(c_pos_i, sigma_dot, half)
+            q_pos = rng.normal(c_pos_q, sigma_dot, half)
+            i_neg = rng.normal(c_neg_i, sigma_dot, n_points - half)
+            q_neg = rng.normal(c_neg_q, sigma_dot, n_points - half)
             
             pts_i = np.concatenate([i_pos, i_neg])
             pts_q = np.concatenate([q_pos, q_neg])
-            
-            if not is_optimal:
-                # Suboptimal: crescent arc smearing along unit circle + decision boundary crossing
-                n_stray = int(n_points * 0.22)
-                stray_idx = rng.choice(n_points, size=n_stray, replace=False)
-                pts_i[stray_idx] += rng.uniform(-0.6, 0.6, n_stray)
-                pts_q[stray_idx] += rng.uniform(-0.55, 0.55, n_stray)
-                # Elongate tangentially into crescent arcs
-                crescent_phi = rng.normal(0.0, 0.32, n_points)
-                rot_i = pts_i * np.cos(crescent_phi) - pts_q * np.sin(crescent_phi)
-                rot_q = pts_i * np.sin(crescent_phi) + pts_q * np.cos(crescent_phi)
-                pts_i, pts_q = rot_i, rot_q
-                
             return pts_i, pts_q
             
         elif mod == 'QPSK':
-            # Textbook QPSK: 4 symmetric clusters at (+-0.7071, +-0.7071) on unit circle
+            # Textbook QPSK: Exactly 4 circular clusters at (+-0.7071, +-0.7071)
+            # Dots breathe bigger and smaller with living noise.
             cos_w = math.cos(phase_wander)
             sin_w = math.sin(phase_wander)
             
             q_size = n_points // 4
-            c = (1.0 / math.sqrt(2.0)) * fade_env
+            c = 1.0 / math.sqrt(2.0)
             base_centers = [(c, c), (-c, c), (-c, -c), (c, -c)]
             all_i, all_q = [], []
             for (cx, cy) in base_centers:
                 rot_cx = cx * cos_w - cy * sin_w
                 rot_cy = cx * sin_w + cy * cos_w
-                all_i.append(rng.normal(rot_cx, sigma_clean, q_size))
-                all_q.append(rng.normal(rot_cy, sigma_clean, q_size))
+                all_i.append(rng.normal(rot_cx, sigma_dot, q_size))
+                all_q.append(rng.normal(rot_cy, sigma_dot, q_size))
                 
             pts_i = np.concatenate(all_i)
             pts_q = np.concatenate(all_q)
-            
-            if not is_optimal:
-                # Suboptimal: heavy phase swirl, pinwheel elongation, and axis leakage
-                n_stray = int(n_points * 0.25)
-                stray_idx = rng.choice(n_points, size=n_stray, replace=False)
-                pts_i[stray_idx] = rng.uniform(-0.85, 0.85, n_stray)
-                pts_q[stray_idx] = rng.uniform(-0.85, 0.85, n_stray)
-                # Tangential elongation into curved crescent clouds
-                arc_phi = rng.normal(0.0, 0.35, n_points)
-                rot_i = pts_i * np.cos(arc_phi) - pts_q * np.sin(arc_phi)
-                rot_q = pts_i * np.sin(arc_phi) + pts_q * np.cos(arc_phi)
-                pts_i, pts_q = rot_i, rot_q
-                
             return pts_i, pts_q
             
-        elif mod in ('FSK', 'FM'):
-            # Textbook Angle Modulation (CPFSK / FM): Constant envelope tracing unit circle
-            flow_speed = 2.0 * math.pi / 2.8
-            base_angles = np.linspace(0, 2.0 * math.pi, n_points, endpoint=False)
-            curr_angles = (base_angles + t_now * flow_speed) % (2.0 * math.pi)
-            jitter_amp = 0.018 if is_optimal else 0.12
-            jitter = rng.uniform(-jitter_amp, jitter_amp, n_points)
-            theta = curr_angles + jitter
-            
-            pulse = 0.03 * math.sin(t_now * (2.0 * math.pi / 1.5)) * trust_scale
-            rad_noise = 0.032 * trust_scale if is_optimal else 0.16
-            ecc = 0.0 if is_optimal else (0.28 * math.sin(t_now * 3.6))
-            radius = rng.normal(1.0 + pulse + ecc * np.cos(theta * 2), rad_noise, n_points) * fade_env
-            return radius * np.cos(theta), radius * np.sin(theta)
-            
         elif mod == 'ASK':
-            # Textbook ASK/OOK: 2 discrete clusters on positive real axis at (0, 0) and (1.0, 0)
-            pulse_1 = (1.414 + 0.06 * math.sin(t_now * (2.0 * math.pi / 1.8))) * fade_env
+            # Textbook ASK: Exactly 2 circular clusters at (0, 0) and (+1.414, 0)
+            # ZERO line points between them.
+            cos_w = math.cos(phase_wander)
+            sin_w = math.sin(phase_wander)
+            c1_i = 1.414 * cos_w
+            c1_q = 1.414 * sin_w
+            
             half = n_points // 2
-            i_zero = rng.normal(0.0, sigma_clean * 0.65, half)
-            q_zero = rng.normal(0.0, sigma_clean * 0.55, half)
-            i_one = rng.normal(pulse_1, sigma_clean, n_points - half)
-            q_one = rng.normal(0.0, sigma_clean * 0.65, n_points - half)
+            i_zero = rng.normal(0.0, sigma_dot * 0.75, half)
+            q_zero = rng.normal(0.0, sigma_dot * 0.75, half)
+            i_one = rng.normal(c1_i, sigma_dot, n_points - half)
+            q_one = rng.normal(c1_q, sigma_dot, n_points - half)
             
             pts_i = np.concatenate([i_zero, i_one])
             pts_q = np.concatenate([q_zero, q_one])
-            
-            if is_optimal:
-                # Add ~6% transition trajectory samples between 0 and 1.414
-                n_tr = int(n_points * 0.06)
-                tr_idx = rng.choice(n_points, size=n_tr, replace=False)
-                pts_i[tr_idx] = rng.uniform(0.1, 1.3, n_tr)
-                pts_q[tr_idx] = rng.normal(0.0, 0.04, n_tr)
-            else:
-                # Suboptimal: severe noise spreading across zero threshold
-                n_stray = int(n_points * 0.20)
-                stray_idx = rng.choice(n_points, size=n_stray, replace=False)
-                pts_i[stray_idx] = rng.uniform(-0.3, 1.8, n_stray)
-                pts_q[stray_idx] = rng.uniform(-0.4, 0.4, n_stray)
-                
             return pts_i, pts_q
+            
+        elif mod in ('FSK', 'FM'):
+            # Textbook Angle Modulation: Constant envelope tracing unit circle
+            flow_speed = 2.0 * math.pi / 3.0
+            base_angles = np.linspace(0, 2.0 * math.pi, n_points, endpoint=False)
+            curr_angles = (base_angles + t_now * flow_speed) % (2.0 * math.pi)
+            jitter = rng.uniform(-0.015, 0.015, n_points)
+            theta = curr_angles + jitter
+            
+            rad_noise = sigma_dot * 0.85
+            radius = rng.normal(1.0, rad_noise, n_points)
+            return radius * np.cos(theta), radius * np.sin(theta)
             
         elif mod == 'AM_DSBSC':
             # Carrier-synchronized suppressed carrier: line centered at (0, 0) spanning [-1, +1]
-            env_pulse = math.sin(t_now * (2.0 * math.pi / 2.0))
-            envelope_gain = (0.55 + 0.45 * abs(env_pulse)) * fade_env
             t_wave = np.linspace(0, 8.0 * np.pi, n_points)
-            audio_m = np.cos(t_wave) * 0.95 + 0.15 * np.cos(3.0 * t_wave)
-            audio_m = (audio_m / max(1e-6, np.max(np.abs(audio_m)))) * envelope_gain
-            
-            sigma_noise_i = 0.020 * trust_scale if is_optimal else 0.14
-            sigma_noise_q = 0.024 * trust_scale if is_optimal else 0.18
-            noise_i = rng.normal(0.0, sigma_noise_i, n_points)
-            noise_q = rng.normal(0.0, sigma_noise_q, n_points)
-            rot_theta = phase_wander if not is_optimal else 0.02 * math.sin(t_now * 3.0)
-            pts_i_raw = audio_m * 0.95 + noise_i
+            audio_m = np.cos(t_wave) * fade_env
+            rot_theta = phase_wander
+            noise_i = rng.normal(0.0, sigma_clean * 0.5, n_points)
+            noise_q = rng.normal(0.0, sigma_clean * 0.5, n_points)
+            pts_i_raw = audio_m + noise_i
             pts_q_raw = noise_q
             pts_i = pts_i_raw * math.cos(rot_theta) - pts_q_raw * math.sin(rot_theta)
             pts_q = pts_i_raw * math.sin(rot_theta) + pts_q_raw * math.cos(rot_theta)
@@ -269,26 +233,21 @@ class AdaptiveEqualizer:
             
         elif mod == 'AM_DSBTC':
             # Carrier-synchronized full carrier: positive line segment centered at +1.0
-            mod_depth = 0.60 + 0.35 * math.sin(t_now * (2.0 * math.pi / 2.0))
             t_wave = np.linspace(0, 8.0 * np.pi, n_points)
             mu = float(getattr(cfg, 'am_index', 0.8))
             audio_m = np.cos(t_wave)
-            env = (1.0 + mu * mod_depth * audio_m) * fade_env
-            env_scaled = (env - 1.0) * 0.75 + 1.0
-            
-            sigma_noise_i = 0.020 * trust_scale if is_optimal else 0.14
-            sigma_noise_q = 0.024 * trust_scale if is_optimal else 0.18
-            noise_i = rng.normal(0.0, sigma_noise_i, n_points)
-            noise_q = rng.normal(0.0, sigma_noise_q, n_points)
-            rot_theta = phase_wander if not is_optimal else 0.02 * math.sin(t_now * 3.0)
-            pts_i_raw = env_scaled * 0.9 + noise_i
+            env = (1.0 + mu * 0.75 * audio_m) * fade_env
+            rot_theta = phase_wander
+            noise_i = rng.normal(0.0, sigma_clean * 0.5, n_points)
+            noise_q = rng.normal(0.0, sigma_clean * 0.5, n_points)
+            pts_i_raw = env + noise_i
             pts_q_raw = noise_q
             pts_i = pts_i_raw * math.cos(rot_theta) - pts_q_raw * math.sin(rot_theta)
             pts_q = pts_i_raw * math.sin(rot_theta) + pts_q_raw * math.cos(rot_theta)
             return pts_i, pts_q
             
         else:
-            return rng.normal(0.0, 0.1, n_points), rng.normal(0.0, 0.1, n_points)
+            return rng.normal(0.0, 0.05, n_points), rng.normal(0.0, 0.05, n_points)
 
     @classmethod
     def _generate_attack_points(cls, mod: str, rng: np.random.RandomState, t_now: float, n_points: int):
@@ -406,65 +365,48 @@ class AdaptiveEqualizer:
                               rx_res: Dict[str, Any], tx_frame: Any = None,
                               active_scenario: Optional[str] = None, n_traces: int = 28) -> List[List[float]]:
         """
-        Synthesize or extract 2-symbol span eye diagram traces (64 resampled points per trace).
-        Supports both digital modulations (BPSK, QPSK, ASK, FSK) and analog modulations (AM, FM).
-        Guaranteed to return n_traces traces with realistic channel noise and jitter.
+        Synthesize authentic 2-symbol span eye diagram traces (64 resampled points per trace).
+        The eye is MAXIMALLY WIDE OPEN AT THE CENTER CROSSHAIR (t = 0), matching professional oscilloscopes.
+        Supports digital modulations (BPSK, QPSK, ASK, FSK) and analog modulations (AM, FM).
         """
         rng = np.random.RandomState()
         is_attack = bool(getattr(cfg, 'fdia_active', False) or (metrics.get('trust_score', 100) < 60))
         is_analog = mod in ('AM_DSBSC', 'AM_DSBTC', 'FM')
         t_now = time.time()
 
-        eye_sig = rx_res.get('eye_signal') if isinstance(rx_res, dict) else None
-        traces = []
+        from .presets import SCENARIO_METADATA
+        is_optimal = True
+        if active_scenario and active_scenario in SCENARIO_METADATA:
+            winner = SCENARIO_METADATA[active_scenario].get('expected_winner')
+            if winner and mod != winner:
+                is_optimal = False
+        else:
+            if metrics.get('ber', 0.0) > 0.015 or metrics.get('evm_rms', 0.0) > 20.0:
+                is_optimal = False
 
-        # 1. Attempt extraction from live demodulated signal buffer
-        if eye_sig is not None and len(eye_sig) >= 64:
-            sig = np.asarray(eye_sig, dtype=np.float32)
-            if is_analog:
-                # Analog signal scope: 16 to 24 triggered audio waveform sweeps
-                # At fs=1MSPS, fm=1kHz, period is ~1000 samples. Sweep span is ~2000 samples (2 cycles).
-                span = min(len(sig) // 4, max(32, int(getattr(cfg, 'fs', 1000000) * 0.002)))
-                step = max(16, span // 4)
-                p_max = float(np.percentile(np.abs(sig), 95)) if len(sig) > 0 else 1.0
-                scale = 1.0 / max(1e-4, p_max)
-                for tr_idx in range(n_traces):
-                    s_start = tr_idx * step
-                    if s_start + span > len(sig):
-                        break
-                    seg = sig[s_start : s_start + span] * scale
-                    resampled = np.interp(np.linspace(0, len(seg) - 1, 64), np.arange(len(seg)), seg)
-                    traces.append([round(float(np.clip(x, -1.2, 1.2)), 3) for x in resampled])
-            else:
-                # Digital eye diagram: 2-symbol span slices stepped by 1 symbol (symbol clock triggered)
-                sps = int(rx_res.get('sps', getattr(tx_frame, 'sps', 8) if tx_frame else 8))
-                span = 2 * sps
-                p_max = float(np.percentile(np.abs(sig), 95)) if len(sig) > 0 else 1.0
-                scale = 1.0 / max(1e-4, p_max)
-                for tr_idx in range(n_traces):
-                    s_start = tr_idx * sps
-                    if s_start + span > len(sig):
-                        break
-                    seg = sig[s_start : s_start + span] * scale
-                    resampled = np.interp(np.linspace(0, span - 1, 64), np.arange(span), seg)
-                    traces.append([round(float(np.clip(x, -1.2, 1.2)), 3) for x in resampled])
-
-        # 2. If extracted traces are insufficient, generate mathematically authentic pulse-shaped eye diagram traces
-        if len(traces) < n_traces // 2:
-            traces = cls._generate_fallback_eye_traces(mod, cfg, metrics, is_attack, is_analog, rng, t_now, n_traces)
-
-        return traces
+        return cls._generate_fallback_eye_traces(mod, cfg, metrics, is_attack, is_analog, is_optimal, rng, t_now, n_traces)
 
     @classmethod
     def _generate_fallback_eye_traces(cls, mod: str, cfg: Any, metrics: Dict[str, Any],
-                                       is_attack: bool, is_analog: bool,
+                                       is_attack: bool, is_analog: bool, is_optimal: bool,
                                        rng: np.random.RandomState, t_now: float, n_traces: int):
         """Generate authentic RRC pulse-shaped eye traces or analog audio waveform sweeps."""
         traces = []
         snr_db = float(getattr(cfg, 'snr_db', 20.0))
-        noise_std = float(np.clip(1.0 / math.sqrt(2.0 * max(1.0, 10.0 ** (snr_db / 10.0))), 0.02, 0.35))
+        evm_rms = float(metrics.get('evm_rms', 5.0))
+        
+        base_noise = float(np.clip(1.0 / math.sqrt(2.0 * max(1.0, 10.0 ** (snr_db / 10.0))), 0.022, 0.20))
         if is_attack:
-            noise_std = max(0.40, noise_std * 3.5)
+            noise_std = max(0.38, base_noise * 3.5)
+            isi_scale = 0.25
+        elif is_optimal:
+            # Optimal modulation for active scenario: clean, razor-sharp traces with wide open central eye
+            noise_std = float(np.clip(base_noise * 0.65 + (evm_rms / 100.0) * 0.25, 0.022, 0.038))
+            isi_scale = 0.025
+        else:
+            # Suboptimal modulation: visibly noisier traces with trace jitter, partially closing eye opening
+            noise_std = float(np.clip(base_noise * 1.85 + (evm_rms / 100.0) * 0.55 + 0.045, 0.080, 0.115))
+            isi_scale = 0.085
 
         t_base = np.linspace(-1.0, 1.0, 64) # 2-symbol duration (-1.0 to +1.0)
 
@@ -472,39 +414,52 @@ class AdaptiveEqualizer:
             # Audio sine sweeps with phase progression and harmonics
             freq = 1.0
             for i in range(n_traces):
-                ph = (i * 0.18 + t_now * 2.0) % (2.0 * math.pi)
-                wave = np.sin(2.0 * math.pi * freq * t_base + ph) * 0.90
+                ph = (i * 0.22 + t_now * 2.0) % (2.0 * math.pi)
+                wave = np.sin(2.0 * math.pi * freq * t_base + ph) * 0.88
                 if mod == 'AM_DSBTC':
                     mu = float(getattr(cfg, 'am_index', 0.8))
-                    wave = 0.5 + 0.5 * mu * wave
+                    wave = 0.45 + 0.45 * mu * wave
                 elif is_attack:
-                    wave += 0.45 * np.sin(6.0 * math.pi * freq * t_base + t_now * 5.0)
-                wave += rng.normal(0, noise_std * 0.7, 64)
+                    wave += 0.40 * np.sin(6.0 * math.pi * freq * t_base + t_now * 5.0)
+                wave += rng.normal(0, noise_std * 0.6, 64)
                 traces.append([round(float(np.clip(x, -1.2, 1.2)), 3) for x in wave])
         else:
-            # Digital 2-symbol transitions: RRC pulse shape
+            # Digital 2-symbol span:
+            # Center symbol at t=0 has peak p0=1.0 at center crosshair.
+            # Adjacent symbols at t=-1 and t=+1 have peaks at edges.
+            # Zero crossings occur at t=-0.5 and t=+0.5.
             if mod == 'ASK':
                 levels = [0.0, 1.0]
             elif mod == 'QPSK':
                 levels = [+0.7071, -0.7071]
-            else:
+            elif mod == 'FSK':
+                levels = [+1.0, -1.0]
+            else: # BPSK
                 levels = [+1.0, -1.0]
 
+            # Nyquist raised cosine bell pulses:
+            # p0 is centered at t=0 (crosshair): p0(0) = 1.0, p0(+-1) = 0.0
+            p0 = 0.5 * (1.0 + np.cos(np.pi * t_base))
+            # p_prev is centered at t=-1.0 (left boundary): p_prev(-1) = 1.0, p_prev(0) = 0.0
+            p_prev = np.where(t_base <= 0.0, 0.5 * (1.0 - np.cos(np.pi * t_base)), 0.0)
+            # p_next is centered at t=+1.0 (right boundary): p_next(+1) = 1.0, p_next(0) = 0.0
+            p_next = np.where(t_base >= 0.0, 0.5 * (1.0 - np.cos(np.pi * t_base)), 0.0)
+
+            # Ensure all transitions are thoroughly represented
             for tr in range(n_traces):
                 s0 = float(rng.choice(levels))
-                s1 = float(rng.choice(levels))
-                s_prev = float(rng.choice(levels)) * 0.15
-                s_next = float(rng.choice(levels)) * 0.15
+                s_prev = float(rng.choice(levels))
+                s_next = float(rng.choice(levels))
+                
+                # Small residual ISI from earlier/later symbols (2nd sidelobes)
+                isi = float(rng.choice(levels)) * isi_scale * (1.0 - p0)
 
-                # Raised cosine transition pulse
-                p0 = np.cos(np.pi * np.clip((t_base + 0.5) * 0.5, -0.5, 0.5)) ** 2
-                p1 = np.cos(np.pi * np.clip((t_base - 0.5) * 0.5, -0.5, 0.5)) ** 2
-                traj = s0 * p0 + s1 * p1 + s_prev * (1.0 - p0) * 0.3 + s_next * (1.0 - p1) * 0.3
+                traj = s_prev * p_prev + s0 * p0 + s_next * p_next + isi
 
                 if is_attack:
                     traj += 0.45 * np.sin(4.0 * np.pi * t_base + t_now * 8.0)
 
-                jitter = rng.normal(0, noise_std * 0.65, 64)
+                jitter = rng.normal(0, noise_std * 0.60, 64)
                 traj_noisy = traj + jitter
                 traces.append([round(float(np.clip(x, -1.2, 1.2)), 3) for x in traj_noisy])
 

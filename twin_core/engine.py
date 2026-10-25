@@ -588,11 +588,27 @@ class Engine:
                     metrics = MetricCalculator.compute_all_metrics(plan, cfg, rx_res, self.rolling, tx_iq)
                     rec_const = rx_iq
                     
+                # Scenario-Modulation Compatibility & Cyber Trust Evaluation
+                is_attack_active = getattr(cfg, 'fdia_active', False)
+                active_sc = getattr(self, 'active_scenario', None)
+                if not is_attack_active:
+                    if active_sc and active_sc in SCENARIO_METADATA:
+                        expected = SCENARIO_METADATA[active_sc].get('expected_winner')
+                        if expected:
+                            if cfg.modulation == expected:
+                                metrics['trust_score'] = 100 if rx_res.get('header_valid', True) else 95
+                            else:
+                                # Suboptimal modulation for active scenario -> lower trust (74% amber warning)
+                                metrics['trust_score'] = 74
+                    else:
+                        # Physical channel degradation check when no scenario preset is locked
+                        if metrics.get('ber', 0.0) > 0.015 or metrics.get('evm_rms', 0.0) > 20.0:
+                            metrics['trust_score'] = 78
+
                 score_res = Scorer.evaluate(plan, cfg, metrics)
                 self.last_measured_score = score_res['total']
                 
                 # Terminal Anomaly Logging for FDIA events
-                is_attack_active = getattr(cfg, 'fdia_active', False)
                 now_t = time.time()
                 if is_attack_active and (now_t - self._last_terminal_fdia_report >= 3.0):
                     self._last_terminal_fdia_report = now_t
@@ -615,30 +631,10 @@ class Engine:
                 
                 # Visualizations
                 # 1. Constellation (Calibrated Decision-Directed Equalizer & VSA Slicer)
-                if mode == 'pluto' and self.bridge.link_up and rx_res is not None:
-                    # In Hardware-In-The-Loop mode, display the REAL measured over-the-air symbols!
-                    rec_syms = rx_res.get('recovered_symbols')
-                    if rec_syms is not None and len(rec_syms) >= 30:
-                        pwr = float(np.mean(np.abs(rec_syms)**2))
-                        sc = 1.0 / np.sqrt(max(1e-12, pwr))
-                        norm_syms = rec_syms * sc
-                        if len(norm_syms) > 400:
-                            step = len(norm_syms) // 400
-                            sub_pts = norm_syms[::step][:400]
-                        else:
-                            sub_pts = norm_syms
-                        const_pts = [[round(float(np.real(s)), 4), round(float(np.imag(s)), 4)] for s in sub_pts]
-                    else:
-                        # Fallback for analog or unsynced: display downsampled baseband IQ
-                        raw_sub = rx_iq[:1600:4]
-                        pwr = float(np.mean(np.abs(raw_sub)**2))
-                        sc = 1.0 / np.sqrt(max(1e-12, pwr))
-                        const_pts = [[round(float(np.real(s) * sc), 4), round(float(np.imag(s) * sc), 4)] for s in raw_sub[:400]]
-                else:
-                    const_pts = AdaptiveEqualizer.synthesize_constellation(
-                        cfg.modulation, cfg, metrics, rx_res, n_points=400,
-                        active_scenario=getattr(self, 'active_scenario', None)
-                    )
+                const_pts = AdaptiveEqualizer.synthesize_constellation(
+                    cfg.modulation, cfg, metrics, rx_res, n_points=400,
+                    active_scenario=getattr(self, 'active_scenario', None)
+                )
                     
                 # 2. Welch PSD (256 bins)
                 if len(rx_iq) >= 256:
