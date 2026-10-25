@@ -1,9 +1,31 @@
-# Python
+# Python & Virtual Environments
 python_ml/venv/
-python_ml/__pycache__/
-*.pyc
+venv/
+.venv/
+env/
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Presentations
+# Logs & Runtime Buffers
+*.log
+dashboard/*.log
+*.tmp
+*.bak
+
+# IDE & OS Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Presentations & Documents
 *.pdf
 *.pptx
 ~$*.pptx
@@ -11,3 +33,7 @@ python_ml/__pycache__/
 # MATLAB temporary files
 *.asv
 *.autosave
+
+# Graphify output
+graphify-out/
+.graphify_analysis.json

@@ -1,0 +1,236 @@
+options:
+  parameters:
+    author: 'SDCS Digital Twin Team'
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: 'Hardware In The Loop Pluto SDR Transceiver Bridge for SDCS Digital Twin'
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: pluto_hitl
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: SDCS Digital Twin — Pluto HITL
+    window_size: (1200,800)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: 'Baseband sample rate matching Python twin (1 MSPS)'
+    value: '1000000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [200, 12]
+    rotation: 0
+    state: enabled
+
+- name: center_freq
+  id: variable
+  parameters:
+    comment: 'Shared LO frequency for TX and RX (2.4 GHz ISM)'
+    value: '2400000000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [310, 12]
+    rotation: 0
+    state: enabled
+
+- name: tx_atten
+  id: variable
+  parameters:
+    comment: 'TX Hardware attenuation in dB (0 to 89.75 dB)'
+    value: '30'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [420, 12]
+    rotation: 0
+    state: enabled
+
+- name: rx_gain
+  id: variable
+  parameters:
+    comment: 'RX Hardware manual gain in dB (0 to 73 dB)'
+    value: '40'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [510, 12]
+    rotation: 0
+    state: enabled
+
+- name: rf_bw
+  id: variable
+  parameters:
+    comment: 'Pluto analog filter RF bandwidth (1.5 MHz)'
+    value: '1500000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [600, 12]
+    rotation: 0
+    state: enabled
+
+- name: pluto_uri
+  id: variable
+  parameters:
+    comment: 'Pluto SDR URI dynamically detected (USB or IP)'
+    value: iio.get_pluto_uri()
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [720, 12]
+    rotation: 0
+    state: enabled
+
+- name: xmlrpc_server_0
+  id: xmlrpc_server
+  parameters:
+    addr: 127.0.0.1
+    alias: ''
+    comment: 'Exposes set_center_freq, set_tx_atten, set_rx_gain, set_samp_rate, set_rf_bw'
+    port: '8090'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [860, 12]
+    rotation: 0
+    state: enabled
+
+- name: zeromq_pull_source_0
+  id: zeromq_pull_source
+  parameters:
+    address: tcp://127.0.0.1:5556
+    affinity: ''
+    alias: ''
+    bind: 'False'
+    comment: 'Pulls complex baseband + Digital IF samples from Python backend'
+    hwm: '-1'
+    pass_tags: 'False'
+    timeout: '-1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [80, 180]
+    rotation: 0
+    state: enabled
+
+- name: iio_pluto_sink_0
+  id: iio_pluto_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    attenuation1: tx_atten
+    bandwidth: rf_bw
+    buffer_size: '8192'
+    comment: 'Pluto RF Transmitter'
+    cyclic: 'False'
+    filter: ''
+    filter_source: '''Auto'''
+    fpass: '0'
+    frequency: center_freq
+    fstop: '0'
+    len_tag_key: ''
+    samplerate: samp_rate
+    type: fc32
+    uri: pluto_uri
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [380, 140]
+    rotation: 0
+    state: enabled
+
+- name: iio_pluto_source_0
+  id: iio_pluto_source
+  parameters:
+    affinity: ''
+    alias: ''
+    bandwidth: rf_bw
+    bbdc: 'True'
+    buffer_size: '8192'
+    comment: 'Pluto RF Receiver (Same LO as TX)'
+    filter: ''
+    filter_source: '''Auto'''
+    fpass: '0'
+    frequency: center_freq
+    fstop: '0'
+    gain1: '''manual'''
+    len_tag_key: ''
+    manual_gain1: rx_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    quadrature: 'True'
+    rfdc: 'True'
+    samplerate: samp_rate
+    type: fc32
+    uri: pluto_uri
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [80, 360]
+    rotation: 0
+    state: enabled
+
+- name: zeromq_push_sink_0
+  id: zeromq_push_sink
+  parameters:
+    address: tcp://127.0.0.1:5555
+    affinity: ''
+    alias: ''
+    bind: 'False'
+    comment: 'Pushes full complex IQ baseband to Python backend'
+    hwm: '-1'
+    pass_tags: 'False'
+    timeout: '100'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [380, 380]
+    rotation: 0
+    state: enabled
+
+connections:
+- [zeromq_pull_source_0, '0', iio_pluto_sink_0, '0']
+- [iio_pluto_source_0, '0', zeromq_push_sink_0, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0

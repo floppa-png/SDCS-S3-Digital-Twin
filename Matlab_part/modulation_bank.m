@@ -247,16 +247,20 @@ end
 % =========================================================================
 
 function [tx_signal, t, msg] = am_dsbsc_mod(params)
-%AM_DSBSC_MOD  s(t) = m(t) * cos(2*pi*fc*t),  m(t) = cos(2*pi*fm*t)
+%AM_DSBSC_MOD  s(t) = m(t) * cos(2*pi*fc*t + phi_c),  m(t) = cos(2*pi*fm*t + phi_m)
 
     fs  = params.fs;
     fc  = params.fc;
-    fm  = params.msg_freq;
+    % Jitter message frequency by +/- 10% to prevent leakage
+    fm  = params.msg_freq + (rand()*0.2 - 0.1)*params.msg_freq;
     dur = params.duration;
+    
+    phi_m = 2*pi*rand();
+    phi_c = 2*pi*rand();
 
     t   = 0 : 1/fs : dur - 1/fs;
-    msg = cos(2*pi*fm*t);                    % unit-amplitude sinusoid
-    tx_signal = msg .* cos(2*pi*fc*t);
+    msg = cos(2*pi*fm*t + phi_m);                    % unit-amplitude sinusoid
+    tx_signal = msg .* cos(2*pi*fc*t + phi_c);
 end
 
 function [rx_msg, out_snr_db] = am_dsbsc_demod(rx_signal, params, tx_msg)
@@ -283,17 +287,21 @@ end
 % =========================================================================
 
 function [tx_signal, t, msg] = am_dsbtc_mod(params)
-%AM_DSBTC_MOD  s(t) = (1 + ka*m(t)) * cos(2*pi*fc*t)
+%AM_DSBTC_MOD  s(t) = (1 + ka*m(t)) * cos(2*pi*fc*t + phi_c)
 
     fs  = params.fs;
     fc  = params.fc;
-    fm  = params.msg_freq;
+    % Jitter message frequency by +/- 10% to prevent leakage
+    fm  = params.msg_freq + (rand()*0.2 - 0.1)*params.msg_freq;
     dur = params.duration;
     ka  = params.mod_index;                  % 0 < ka <= 1
 
+    phi_m = 2*pi*rand();
+    phi_c = 2*pi*rand();
+
     t   = 0 : 1/fs : dur - 1/fs;
-    msg = cos(2*pi*fm*t);
-    tx_signal = (1 + ka*msg) .* cos(2*pi*fc*t);
+    msg = cos(2*pi*fm*t + phi_m);
+    tx_signal = (1 + ka*msg) .* cos(2*pi*fc*t + phi_c);
 end
 
 function [rx_msg, out_snr_db] = am_dsbtc_demod(rx_signal, params, tx_msg)
@@ -323,19 +331,23 @@ end
 % =========================================================================
 
 function [tx_signal, t, msg] = fm_mod(params)
-%FM_MOD  s(t) = cos(2*pi*fc*t + 2*pi*kf * integral(m(tau),0,t))
+%FM_MOD  s(t) = cos(2*pi*fc*t + phi_c + 2*pi*kf * integral(m(tau),0,t))
 
     fs  = params.fs;
     fc  = params.fc;
-    fm  = params.msg_freq;
+    % Jitter message frequency by +/- 10% to prevent leakage
+    fm  = params.msg_freq + (rand()*0.2 - 0.1)*params.msg_freq;
     dur = params.duration;
     kf  = params.fm_freq_dev;                % Hz per unit of m(t)
 
+    phi_m = 2*pi*rand();
+    phi_c = 2*pi*rand();
+
     t   = 0 : 1/fs : dur - 1/fs;
-    msg = cos(2*pi*fm*t);
+    msg = cos(2*pi*fm*t + phi_m);
 
     msg_int   = cumsum(msg) / fs;            % numerical integration
-    tx_signal = cos(2*pi*fc*t + 2*pi*kf*msg_int);
+    tx_signal = cos(2*pi*fc*t + phi_c + 2*pi*kf*msg_int);
 end
 
 function [rx_msg, out_snr_db] = fm_demod(rx_signal, params, tx_msg)

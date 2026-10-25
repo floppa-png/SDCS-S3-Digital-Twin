@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Physics-based Software Defined Radio Digital Twin for Real-Time Modulation Optimization across AWGN, Fading, Doppler and CFO Impairments.">
+  <title>SDCS · Digital Twin & SDR Modulation Benchmark</title>
+  
+  <!-- Google Fonts: Space Grotesk & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Core CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ version }}">
+
+  <!-- CDNs: Socket.IO, Chart.js, GSAP -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Sticky Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <div>
+        <h1 id="app-title">SDCS · Digital Twin</h1>
+        <div style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">PlutoSDR Physical Twin · 1 MSPS Baseband</div>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="status-pill" id="pill-engine">
+        <span class="status-dot active"></span>
+        <span>ENGINE <span id="val-fps" style="color:var(--good)">10 FPS</span></span>
+      </div>
+
+      <div class="status-pill" id="pill-link">
+        <span class="status-dot" id="dot-link"></span>
+        <span id="label-link">PLUTO: SIM</span>
+      </div>
+
+      <div class="status-pill" id="pill-twin">
+        <span class="status-dot active"></span>
+        <span>TWIN <span id="val-twin-time" style="color:var(--color-bpsk)">1 Hz</span></span>
+      </div>
+
+      <div class="status-pill" id="pill-trust" title="Cyber-Physical Trust Score derived from CRC-8 validation, Preamble PSR, and EVM anomaly">
+        <span class="status-dot active" id="dot-trust"></span>
+        <span>TRUST <span id="val-trust-score" style="color:var(--good)">100%</span></span>
+      </div>
+
+      <button type="button" class="btn btn-fdia" id="btn-toggle-fdia" title="Inject Adversarial False Data Injection Attack">
+        <span class="status-dot" id="dot-fdia"></span>
+        <span id="label-fdia">FDIA: OFF</span>
+      </button>
+
+      <div class="segmented-control" id="control-mode">
+        <button type="button" class="segmented-btn active" id="btn-mode-sim" data-mode="sim">SIM</button>
+        <button type="button" class="segmented-btn" id="btn-mode-pluto" data-mode="pluto">PLUTO</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Layout -->
+  <main class="main-layout">
+
+    <!-- 1. Hero Modulation Selector -->
+    <section class="hero-section glass-panel" aria-label="Modulation Selection">
+      <div class="hero-grid" id="modulation-hero-grid">
+
+        <!-- BPSK Card -->
+        <div class="mod-card selected" id="card-mod-BPSK" data-mod="BPSK">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(34,211,238,0.2)" stroke-width="1.5"/>
+              <line x1="5" y1="20" x2="35" y2="20" stroke="rgba(255,255,255,0.15)"/>
+              <circle cx="8" cy="20" r="4" fill="#22d3ee" filter="drop-shadow(0 0 4px #22d3ee)"/>
+              <circle cx="32" cy="20" r="4" fill="#22d3ee" filter="drop-shadow(0 0 4px #22d3ee)"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">BPSK</div>
+            <div class="mod-subtitle">1 b/sym · Antipodal</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-BPSK">-- PTS</div>
+        </div>
+
+        <!-- QPSK Card -->
+        <div class="mod-card" id="card-mod-QPSK" data-mod="QPSK">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(139,92,246,0.2)" stroke-width="1.5"/>
+              <circle cx="11" cy="11" r="3.5" fill="#8b5cf6" filter="drop-shadow(0 0 4px #8b5cf6)"/>
+              <circle cx="29" cy="11" r="3.5" fill="#8b5cf6" filter="drop-shadow(0 0 4px #8b5cf6)"/>
+              <circle cx="11" cy="29" r="3.5" fill="#8b5cf6" filter="drop-shadow(0 0 4px #8b5cf6)"/>
+              <circle cx="29" cy="29" r="3.5" fill="#8b5cf6" filter="drop-shadow(0 0 4px #8b5cf6)"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">QPSK</div>
+            <div class="mod-subtitle">2 b/sym · 4-Phase</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-QPSK">-- PTS</div>
+        </div>
+
+
+        <!-- ASK Card -->
+        <div class="mod-card" id="card-mod-ASK" data-mod="ASK">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <path d="M4 30 L12 10 L20 30 L28 10 L36 30" fill="none" stroke="#f59e0b" stroke-width="2.5" filter="drop-shadow(0 0 4px #f59e0b)"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">ASK</div>
+            <div class="mod-subtitle">1 b/sym · OOK Envelope</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-ASK">-- PTS</div>
+        </div>
+
+        <!-- FSK Card -->
+        <div class="mod-card" id="card-mod-FSK" data-mod="FSK">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <path d="M4 20 Q8 8, 12 20 T20 20 Q23 12, 26 20 T32 20 Q34 14, 36 20" fill="none" stroke="#a3e635" stroke-width="2.5" filter="drop-shadow(0 0 4px #a3e635)"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">FSK</div>
+            <div class="mod-subtitle">1 b/sym · CPFSK Dual-Tone</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-FSK">-- PTS</div>
+        </div>
+
+        <!-- AM_DSBSC Card -->
+        <div class="mod-card" id="card-mod-AM_DSBSC" data-mod="AM_DSBSC">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <path d="M4 20 Q12 4, 20 20 T36 20 M4 20 Q12 36, 20 20 T36 20" fill="none" stroke="#60a5fa" stroke-width="2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">AM-DSBSC</div>
+            <div class="mod-subtitle">Analog · Suppressed Carrier</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-AM_DSBSC">-- PTS</div>
+        </div>
+
+        <!-- AM_DSBTC Card -->
+        <div class="mod-card" id="card-mod-AM_DSBTC" data-mod="AM_DSBTC">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <path d="M4 14 Q12 6, 20 14 T36 14 M4 26 Q12 34, 20 26 T36 26" fill="none" stroke="#fb923c" stroke-width="2"/>
+              <line x1="4" y1="20" x2="36" y2="20" stroke="rgba(251,146,60,0.4)" stroke-dasharray="2,2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">AM-DSBTC</div>
+            <div class="mod-subtitle">Analog · Full Carrier Broadcast</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-AM_DSBTC">-- PTS</div>
+        </div>
+
+        <!-- FM Card -->
+        <div class="mod-card" id="card-mod-FM" data-mod="FM">
+          <div class="twin-pick-ribbon">★ TWIN PICK</div>
+          <div class="mod-glyph">
+            <svg viewBox="0 0 40 40">
+              <path d="M4 20 C6 10, 8 10, 10 20 C11 30, 12 30, 14 20 C18 10, 22 10, 26 20 C30 30, 34 30, 36 20" fill="none" stroke="#2dd4bf" stroke-width="2.5" filter="drop-shadow(0 0 4px #2dd4bf)"/>
+            </svg>
+          </div>
+          <div>
+            <div class="mod-title">FM</div>
+            <div class="mod-subtitle">Analog · Angle Modulated</div>
+          </div>
+          <div class="mod-score-badge" id="badge-score-FM">-- PTS</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 2. Interactive Control Toolbar -->
+    <section class="toolbar-section glass-panel" aria-label="Engine Controls">
+      <!-- Row 1: Scenario Context & Mission Setter -->
+      <div class="toolbar-row">
+        <div class="toolbar-group">
+          <div class="scenario-badge-wrap" id="badge-active-scenario" title="Active Physical Link Scenario (Locked Physics)">
+            <span class="scenario-dot"></span>
+            <div class="scenario-info">
+              <span class="scenario-name" id="label-scenario-name">Deep Space Probe (NASA DSN Downlink)</span>
+              <span class="scenario-tag" id="label-scenario-tag">DIGITAL · POWER-CONSTRAINED</span>
+            </div>
+          </div>
+
+          <select id="select-preset" class="custom-select" style="min-width: 280px;" title="Scenario Setter: Clamps signal generation strictly to selected scenario reality">
+            <option value="">-- Scenario Setter --</option>
+            <optgroup label="Digital Scenarios (4 Balanced)">
+              <option value="deep_space">Deep Space Probe (NASA DSN Downlink) → BPSK</option>
+              <option value="urban_cellular">Urban Tactical Mobile (4G/5G Microcell) → QPSK</option>
+              <option value="leo_doppler">LEO Orbit Doppler Satellite (Starlink / CubeSat) → FSK</option>
+              <option value="iot_tag">Ultra-Low Power IoT Sensor (Sub-GHz Smart Meter) → ASK</option>
+            </optgroup>
+            <optgroup label="Analog Scenarios (3 Balanced)">
+              <option value="fm_broadcast">High-Fidelity Stereo Broadcast (Commercial FM) → FM</option>
+              <option value="am_broadcast">Aviation & Ground Tower Comms (AM-DSBTC) → AM-DSBTC</option>
+              <option value="coherent_voice">Maritime Tactical Audio (AM-DSBSC) → AM-DSBSC</option>
+            </optgroup>
+            <optgroup label="Cyber-Physical Security (1 Attack)">
+              <option value="fdia_attack">Electronic Warfare (FDIA Jamming & Spoofing) → FSK</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <button type="button" class="btn" id="btn-reset-stats">Reset Stats</button>
+        </div>
+      </div>
+
+      <!-- Row 2: Operational Controls & Security Attack Triggers -->
+      <div class="toolbar-row">
+        <div class="toolbar-group">
+          <button type="button" class="btn" id="btn-toggle-randomizer">
+            <span class="status-dot" id="dot-randomizer"></span>
+            <span>Auto-Randomize</span>
+          </button>
+
+          <div class="countdown-badge" id="wrap-countdown">
+            <svg class="countdown-ring" viewBox="0 0 24 24">
+              <circle class="bg" cx="12" cy="12" r="10"/>
+              <circle class="progress" id="ring-countdown-progress" cx="12" cy="12" r="10"/>
+            </svg>
+            <span id="label-countdown">25.0s</span>
+          </div>
+
+          <button type="button" class="btn btn-primary" id="btn-shuffle" title="Generate random signals strictly bounded inside active scenario">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+            <span>Randomize (Within Scenario)</span>
+          </button>
+
+          <button type="button" class="btn" id="btn-toggle-autopilot" title="Continuously monitor trust score and auto-adapt to best modulation">
+            <span class="status-dot" id="dot-autopilot"></span>
+            <span>Continuous Autopilot</span>
+          </button>
+        </div>
+
+        <!-- Cyber-Physical Attack Controls Group -->
+        <div class="toolbar-group">
+          <button type="button" class="btn btn-attack" id="btn-toolbar-fdia-manual" title="Toggle Manual False Data Injection Attack">
+            <span class="attack-icon">⚡</span>
+            <span id="label-toolbar-fdia-manual">Manual Attack: OFF</span>
+          </button>
+
+          <button type="button" class="btn btn-attack-random" id="btn-toolbar-fdia-random" title="Toggle Random Time Attack (Injects faulty data at pseudo-random intervals)">
+            <span class="attack-icon">🎲</span>
+            <span id="label-toolbar-fdia-random">Random Attack: OFF</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Content Grid: Parameters (Left) + Performance & Charts (Right) -->
+    <div class="content-grid">
+
+      <!-- Parameters Side Panel -->
+      <aside class="params-panel glass-panel" aria-label="Waveform Parameters">
+        
+        <!-- Source Group -->
+        <div class="param-group-card">
+          <div class="param-group-title">Source Configuration</div>
+          
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Source Type</span>
+              <span class="param-val-readout" id="readout-source_type">digital</span>
+            </div>
+            <div class="param-control-row">
+              <select id="input-source_type" class="custom-select" style="width:100%;">
+                <option value="digital">Digital Data (PRBS)</option>
+                <option value="analog">Analog Audio (Multitone)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="param-item" id="item-data_rate">
+            <div class="param-header">
+              <span class="param-label">Required Bit Rate</span>
+              <span class="param-val-readout"><span id="readout-data_rate">50000</span> bps</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-data_rate" min="1000" max="400000" step="1000" value="50000">
+              <input type="number" id="num-data_rate" min="1000" max="400000" step="1000" value="50000">
+            </div>
+          </div>
+
+          <div class="param-item" id="item-msg_bw" style="display:none;">
+            <div class="param-header">
+              <span class="param-label">Message Bandwidth (W)</span>
+              <span class="param-val-readout"><span id="readout-msg_bw">5000</span> Hz</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-msg_bw" min="300" max="20000" step="100" value="5000">
+              <input type="number" id="num-msg_bw" min="300" max="20000" step="100" value="5000">
+            </div>
+          </div>
+
+          <div class="param-item" id="item-pcm_bits" style="display:none;">
+            <div class="param-header">
+              <span class="param-label">PCM Quantization</span>
+              <span class="param-val-readout"><span id="readout-pcm_bits">8</span> bits</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-pcm_bits" min="4" max="12" step="1" value="8">
+              <input type="number" id="num-pcm_bits" min="4" max="12" step="1" value="8">
+            </div>
+          </div>
+        </div>
+
+        <!-- Spectrum Group -->
+        <div class="param-group-card">
+          <div class="param-group-title">Spectrum & Bandwidth</div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Allocated Channel BW (B)</span>
+              <span class="param-val-readout"><span id="readout-alloc_bw">60000</span> Hz</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-alloc_bw" min="5000" max="400000" step="1000" value="60000">
+              <input type="number" id="num-alloc_bw" min="5000" max="400000" step="1000" value="60000">
+            </div>
+          </div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">RRC Roll-off (α)</span>
+              <span class="param-val-readout" id="readout-rolloff">0.35</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-rolloff" min="0.10" max="1.00" step="0.05" value="0.35">
+              <input type="number" id="num-rolloff" min="0.10" max="1.00" step="0.05" value="0.35">
+            </div>
+          </div>
+        </div>
+
+        <!-- Channel Link Group -->
+        <div class="param-group-card">
+          <div class="param-group-title">Channel & Impairments</div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Link SNR in Bandwidth B</span>
+              <span class="param-val-readout"><span id="readout-snr_db">12.0</span> dB</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-snr_db" min="-5.0" max="35.0" step="0.5" value="12.0">
+              <input type="number" id="num-snr_db" min="-5.0" max="35.0" step="0.5" value="12.0">
+            </div>
+          </div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Fading Channel Model</span>
+              <span class="param-val-readout" id="readout-channel">awgn</span>
+            </div>
+            <div class="param-control-row">
+              <select id="input-channel" class="custom-select" style="width:100%;">
+                <option value="awgn">AWGN (Line of Sight)</option>
+                <option value="rayleigh">Rayleigh Fading (Multipath Non-LOS)</option>
+                <option value="rician">Rician Fading (LOS + Multipath)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="param-item" id="item-k_factor" style="display:none;">
+            <div class="param-header">
+              <span class="param-label">Rician K Factor</span>
+              <span class="param-val-readout"><span id="readout-k_factor_db">6.0</span> dB</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-k_factor_db" min="-10.0" max="20.0" step="1.0" value="6.0">
+              <input type="number" id="num-k_factor_db" min="-10.0" max="20.0" step="1.0" value="6.0">
+            </div>
+          </div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Max Doppler Spread (f_D)</span>
+              <span class="param-val-readout"><span id="readout-doppler_hz">0</span> Hz</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-doppler_hz" min="0" max="2000" step="20" value="0">
+              <input type="number" id="num-doppler_hz" min="0" max="2000" step="20" value="0">
+            </div>
+          </div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Carrier Frequency Offset (CFO)</span>
+              <span class="param-val-readout"><span id="readout-cfo_hz">0</span> Hz</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-cfo_hz" min="0" max="5000" step="50" value="0">
+              <input type="number" id="num-cfo_hz" min="0" max="5000" step="50" value="0">
+            </div>
+          </div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Phase Noise (rms)</span>
+              <span class="param-val-readout"><span id="readout-phase_noise_deg">0.0</span> °</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-phase_noise_deg" min="0.0" max="20.0" step="0.5" value="0.0">
+              <input type="number" id="num-phase_noise_deg" min="0.0" max="20.0" step="0.5" value="0.0">
+            </div>
+          </div>
+        </div>
+
+        <!-- Modulation Specific Group -->
+        <div class="param-group-card">
+          <div class="param-group-title">Modulation Index Tuning</div>
+
+          <div class="param-item" id="item-am_index">
+            <div class="param-header">
+              <span class="param-label">AM Modulation Index (μ)</span>
+              <span class="param-val-readout" id="readout-am_index">0.80</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-am_index" min="0.10" max="1.00" step="0.05" value="0.80">
+              <input type="number" id="num-am_index" min="0.10" max="1.00" step="0.05" value="0.80">
+            </div>
+          </div>
+
+          <div class="param-item" id="item-fm_beta">
+            <div class="param-header">
+              <span class="param-label">FM Index (β)</span>
+              <span class="param-val-readout" id="readout-fm_beta">5.0</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-fm_beta" min="0.5" max="10.0" step="0.5" value="5.0">
+              <input type="number" id="num-fm_beta" min="0.5" max="10.0" step="0.5" value="5.0">
+            </div>
+          </div>
+
+          <div class="param-item" id="item-fsk_h">
+            <div class="param-header">
+              <span class="param-label">FSK Index (h)</span>
+              <span class="param-val-readout" id="readout-fsk_h">1.0</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-fsk_h" min="0.5" max="2.0" step="0.1" value="1.0">
+              <input type="number" id="num-fsk_h" min="0.5" max="2.0" step="0.1" value="1.0">
+            </div>
+          </div>
+        </div>
+
+        <!-- QoS & Scoring Group -->
+        <div class="param-group-card">
+          <div class="param-group-title">QoS & Scorer Profile</div>
+
+          <div class="param-item">
+            <div class="param-header">
+              <span class="param-label">Scoring Profile</span>
+              <span class="param-val-readout" id="readout-profile">balanced</span>
+            </div>
+            <div class="param-control-row">
+              <select id="input-profile" class="custom-select" style="width:100%;">
+                <option value="balanced">Balanced (General Trade-off)</option>
+                <option value="reliability">Reliability (Mission Critical, Weight 0.55)</option>
+                <option value="throughput">Throughput (Maximum Speed, Weight 0.45)</option>
+                <option value="low_power">Low Power / IoT (Power & Complexity)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="param-item" id="item-target_ber">
+            <div class="param-header">
+              <span class="param-label">Target BER</span>
+              <span class="param-val-readout" id="readout-target_ber">1e-5</span>
+            </div>
+            <div class="param-control-row">
+              <select id="select-target_ber" class="custom-select" style="width:100%;">
+                <option value="0.001">1e-3 (Voice / Low QoS)</option>
+                <option value="0.0001">1e-4 (Standard Telemetry)</option>
+                <option value="0.00001" selected>1e-5 (Packet Data)</option>
+                <option value="0.000001">1e-6 (High Reliability)</option>
+                <option value="0.0000001">1e-7 (Mission Critical)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="param-item" id="item-target_snr_out" style="display:none;">
+            <div class="param-header">
+              <span class="param-label">Target Audio SNR</span>
+              <span class="param-val-readout"><span id="readout-target_snr_out">30.0</span> dB</span>
+            </div>
+            <div class="param-control-row">
+              <input type="range" id="range-target_snr_out" min="10.0" max="50.0" step="1.0" value="30.0">
+              <input type="number" id="num-target_snr_out" min="10.0" max="50.0" step="1.0" value="30.0">
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Main Dashboard Column -->
+      <div class="dashboard-col">
+
+        <!-- Cyber-Physical Security & FDIA Detection Suite -->
+        <section class="fdia-detector-card glass-panel" id="panel-fdia-detector" aria-label="FDIA Cyber-Physical Security & Detection">
+          <div class="fdia-detector-header">
+            <div class="fdia-title-wrap">
+              <span class="fdia-shield-icon">🛡️</span>
+              <div>
+                <div class="fdia-title">CYBER-PHYSICAL SECURITY & FDIA DETECTOR SUITE</div>
+                <div class="fdia-subtitle">Real-time False Data Injection detection, preamble correlation integrity & cyber-attack simulation</div>
+              </div>
+            </div>
+            <div class="fdia-header-badges">
+              <div class="fdia-status-pill active" id="pill-fdia-system">
+                <span class="status-dot active" id="dot-fdia-system"></span>
+                <span id="label-fdia-system">FDIA SYSTEM: ACTIVE</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Signal Stream Integrity Alarm Banner -->
+          <div class="stream-status-banner secure" id="stream-status-banner">
+            <div class="stream-icon" id="stream-icon">🛡️</div>
+            <div class="stream-text-col">
+              <div class="stream-headline" id="stream-headline">AUTHENTIC SIGNAL STREAM · INTEGRITY VERIFIED (NO ATTACK)</div>
+              <div class="stream-detail" id="stream-detail">No False Data Injection detected in current stream. Preamble peak-to-sidelobe ratio (PSR) and CRC-8 header match authentic transceiver profile.</div>
+            </div>
+          </div>
+
+          <!-- Controls & Live Security Telemetry Grid -->
+          <div class="fdia-suite-grid">
+            <!-- Attack Control Panel -->
+            <div class="fdia-control-subpanel">
+              <div class="subpanel-title">Cyber-Attack Injection Controls</div>
+              <div class="fdia-btn-group">
+                <button type="button" class="btn btn-attack" id="btn-manual-attack" title="Inject malicious swept jamming and pilot spoofing immediately">
+                  <span class="attack-icon">⚡</span>
+                  <span id="label-manual-attack">Manual Attack: OFF</span>
+                </button>
+                <button type="button" class="btn btn-attack-random" id="btn-random-attack" title="Randomly inject and clear FDIA bursts at pseudo-random time intervals">
+                  <span class="attack-icon">🎲</span>
+                  <span id="label-random-attack">Random Time Attack: OFF</span>
+                </button>
+              </div>
+              <div class="fdia-random-readout" id="label-random-timer">Random Burst Interval: INACTIVE</div>
+            </div>
+
+            <!-- Anomaly Telemetry Panel -->
+            <div class="fdia-metrics-subpanel">
+              <div class="subpanel-title">In-Band Anomaly Detection Telemetry</div>
+              <div class="fdia-metric-row">
+                <span class="det-label">Cyber Trust Score:</span>
+                <div class="det-bar-wrap">
+                  <div class="subscore-bar-bg" style="width:140px;"><div class="subscore-bar-fill" id="bar-det-trust" style="width:95%; background:var(--good);"></div></div>
+                  <strong class="det-val" id="val-det-trust">95%</strong>
+                </div>
+              </div>
+              <div class="fdia-metric-row">
+                <span class="det-label">Preamble PSR:</span>
+                <span class="det-tag secure" id="tag-det-psr">NOMINAL · 5.0x</span>
+              </div>
+              <div class="fdia-metric-row">
+                <span class="det-label">Header CRC-8:</span>
+                <span class="det-tag secure" id="tag-det-crc">VALID (MATCH)</span>
+              </div>
+              <div class="fdia-metric-row">
+                <span class="det-label">Stream Detection:</span>
+                <span class="det-tag secure" id="tag-det-stream">AUTHENTIC STREAM</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Performance Gauge & Sub-scores -->
+        <section class="perf-hero-card glass-panel" aria-label="Live Modulation Score">
+          
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 160 160">
+              <circle class="gauge-bg" cx="80" cy="80" r="70"/>
+              <circle class="gauge-progress" id="gauge-circle-progress" cx="80" cy="80" r="70"/>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-score-num" id="val-score-total">--</div>
+              <div class="gauge-grade-badge" id="val-score-grade">GRADE -</div>
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">
+              Measured Score · <span id="label-fidelity" style="color:var(--color-bpsk)">Twin ±0 pts</span>
+            </div>
+          </div>
+
+          <!-- 6 Sub-scores Progress Bars -->
+          <div class="subscores-grid">
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>Reliability (S_rel)</span>
+                <span class="param-val-readout" id="val-sub-rel">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-rel"></div></div>
+            </div>
+
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>Rate Achievement (S_rate)</span>
+                <span class="param-val-readout" id="val-sub-rate">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-rate"></div></div>
+            </div>
+
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>Spectral Fit (S_bw)</span>
+                <span class="param-val-readout" id="val-sub-bw">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-bw"></div></div>
+            </div>
+
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>Power Margin (S_pwr)</span>
+                <span class="param-val-readout" id="val-sub-pwr">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-pwr"></div></div>
+            </div>
+
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>Rx Complexity (S_cplx)</span>
+                <span class="param-val-readout" id="val-sub-cplx">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-cplx"></div></div>
+            </div>
+
+            <div class="subscore-item">
+              <div class="subscore-meta">
+                <span>PAPR Efficiency (S_papr)</span>
+                <span class="param-val-readout" id="val-sub-papr">0%</span>
+              </div>
+              <div class="subscore-bar-bg"><div class="subscore-bar-fill" id="bar-sub-papr"></div></div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- Metric Tiles Grid -->
+        <section class="metric-tiles-grid" aria-label="Physical Link Telemetry">
+          
+          <div class="metric-tile" id="tile-ber">
+            <div class="tile-label"><span id="lbl-ber">BER</span><span title="Measured bit error rate vs closed-form theoretical error">ⓘ</span></div>
+            <div class="tile-val" id="val-ber">--</div>
+            <div class="tile-sub">Theory: <span id="val-theory-ber">--</span></div>
+          </div>
+
+          <div class="metric-tile" id="tile-per">
+            <div class="tile-label"><span>Packet Loss (PER)</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-per">--%</div>
+            <div class="tile-sub">Goodput: <span id="val-goodput">--</span> kbps</div>
+          </div>
+
+          <div class="metric-tile" id="tile-ebn0">
+            <div class="tile-label"><span>Eb/N0 (Actual)</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-ebn0">-- dB</div>
+            <div class="tile-sub">Margin: <span id="val-link-margin">--</span> dB</div>
+          </div>
+
+          <div class="metric-tile" id="tile-snr">
+            <div class="tile-label"><span>SNR (In-Band)</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-snr-meas">-- dB</div>
+            <div class="tile-sub">Set: <span id="val-snr-set">--</span> dB</div>
+          </div>
+
+          <div class="metric-tile" id="tile-obw">
+            <div class="tile-label"><span>Occupied BW (99%)</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-obw">-- kHz</div>
+            <div class="tile-sub">Cap: <span id="val-alloc-bw-metric">--</span> kHz</div>
+          </div>
+
+          <div class="metric-tile" id="tile-speceff">
+            <div class="tile-label"><span>Spectral Eff.</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-spectral-eff">-- b/s/Hz</div>
+            <div class="tile-sub">Shannon C: <span id="val-shannon-cap">--</span> kbps</div>
+          </div>
+
+          <div class="metric-tile" id="tile-cfo">
+            <div class="tile-label"><span>CFO Estimated</span><span>ⓘ</span></div>
+            <div class="tile-val" id="val-cfo-est">-- Hz</div>
+            <div class="tile-sub">Sync: <span id="val-sync-status">LOCK</span></div>
+          </div>
+
+          <div class="metric-tile" id="tile-trust">
+            <div class="tile-label"><span>Cyber-Physical Trust</span><span title="Preamble PSR, CRC-8 header check, and EVM anomaly detection">ⓘ</span></div>
+            <div class="tile-val" id="val-tile-trust">100%</div>
+            <div class="tile-sub"><span id="val-fdia-status" style="color:var(--good)">SECURE · NO ATTACK</span></div>
+          </div>
+
+        </section>
+
+        <!-- Digital Twin Recommendation Card -->
+        <section class="twin-rec-card glass-panel" aria-label="Digital Twin Recommendation">
+          <div class="twin-rec-info">
+            <h3>Digital Twin Recommendation</h3>
+            <div class="twin-rec-message" id="twin-rec-text">Evaluating optimal physical link trade-offs...</div>
+            <div class="twin-rec-sub" id="twin-rec-details">Confidence: <span id="twin-confidence">--%</span> · Link Optimization Engine</div>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary" id="btn-apply-best">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <span>Apply Twin Recommendation</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Live Visualizations Canvas Grid -->
+        <section class="viz-grid" aria-label="Real-time Visualizations">
+          
+          <!-- Phosphor Constellation -->
+          <div class="viz-box glass-panel">
+            <div class="viz-header">
+              <span>Constellation Diagram (Phosphor Persistence)</span>
+              <span id="label-const-mod" style="font-family:var(--font-mono); color:var(--color-bpsk)">BPSK</span>
+            </div>
+            <div class="viz-canvas-container">
+              <canvas class="viz-canvas" id="canvas-constellation" width="380" height="220"></canvas>
+            </div>
+          </div>
+
+          <!-- Spectrum & Waterfall -->
+          <div class="viz-box glass-panel">
+            <div class="viz-header">
+              <span>Power Spectral Density & Waterfall</span>
+              <span style="font-family:var(--font-mono)">1 MSPS Span</span>
+            </div>
+            <div class="viz-canvas-container">
+              <canvas class="viz-canvas" id="canvas-spectrum" width="380" height="220"></canvas>
+            </div>
+          </div>
+
+          <!-- Eye Diagram / Audio Signal -->
+          <div class="viz-box glass-panel">
+            <div class="viz-header">
+              <span id="label-eye-title">Eye Diagram (2 Symbol Span)</span>
+              <span style="font-family:var(--font-mono)" id="label-eye-sub">In-Phase</span>
+            </div>
+            <div class="viz-canvas-container">
+              <canvas class="viz-canvas" id="canvas-eye" width="380" height="220"></canvas>
+            </div>
+          </div>
+
+          <!-- Time-Domain IQ Trace -->
+          <div class="viz-box glass-panel">
+            <div class="viz-header">
+              <span>Time-Domain Baseband IQ Samples</span>
+              <span style="font-family:var(--font-mono); color:var(--text-muted)">I (Cyan) / Q (Violet)</span>
+            </div>
+            <div class="viz-canvas-container">
+              <canvas class="viz-canvas" id="canvas-iq" width="380" height="220"></canvas>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- Analytical Charts Grid -->
+        <section class="charts-grid" aria-label="Analytical Performance Charts">
+          
+          <!-- Score Timeline (120s History) -->
+          <div class="chart-box chart-full glass-panel">
+            <div class="viz-header" style="margin-bottom:8px;">
+              <span>Score Evolution & Adaptation Timeline (Last 120s)</span>
+              <span style="font-size:0.75rem; color:var(--good)">▲ Vertical Markers: Optimization Events</span>
+            </div>
+            <div style="height: 190px; width:100%;">
+              <canvas id="chart-score-timeline"></canvas>
+            </div>
+          </div>
+
+          <!-- BER vs Eb/N0 Curves -->
+          <div class="chart-box glass-panel">
+            <div class="viz-header" style="margin-bottom:8px;">
+              <span>Theoretical BER Waterfall Curves & Operating Point</span>
+            </div>
+            <div style="height: 200px; width:100%;">
+              <canvas id="chart-ber-curves"></canvas>
+            </div>
+          </div>
+
+          <!-- Candidate Twin Ranking -->
+          <div class="chart-box glass-panel">
+            <div class="viz-header" style="margin-bottom:8px;">
+              <span>Digital Twin Candidate Scores & Predicted Gains</span>
+            </div>
+            <div style="height: 200px; width:100%;">
+              <canvas id="chart-ranking"></canvas>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- Live Event Log -->
+        <section class="event-log-panel glass-panel" aria-label="System Event Log">
+          <div class="viz-header" style="margin-bottom: 8px;">
+            <span>System Telemetry & Optimization Event Log</span>
+            <span style="font-size:0.72rem; color:var(--text-dim)">Strict Parameter Validation Enforced</span>
+          </div>
+          <div id="event-log-container">
+            <div class="log-entry">
+              <span class="log-time">00:00:00</span>
+              <span class="log-msg">Connecting to SDCS Digital Twin telemetry backend...</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- JavaScript Modules -->
+  <script src="{{ url_for('static', filename='js/charts.js') }}?v={{ version }}"></script>
+  <script src="{{ url_for('static', filename='js/viz.js') }}?v={{ version }}"></script>
+  <script src="{{ url_for('static', filename='js/controls.js') }}?v={{ version }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}?v={{ version }}"></script>
+</body>
+</html>

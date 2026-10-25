@@ -56,6 +56,10 @@ res_bw_10db           = zeros(total, 1);
 res_peak_psd          = zeros(total, 1);
 res_spectral_flatness = zeros(total, 1);
 res_spectral_centroid = zeros(total, 1);
+res_carrier_sideband_ratio = zeros(total, 1);
+res_amp_variance      = zeros(total, 1);
+res_amp_kurtosis      = zeros(total, 1);
+res_phase_variance    = zeros(total, 1);
 
 %% -------------------------------------------------------------------- %%
 %  4.  MAIN SWEEP LOOP
@@ -153,6 +157,10 @@ for m = 1:num_mods
                 res_peak_psd(row)          = feat.peak_psd_db;
                 res_spectral_flatness(row) = feat.spectral_flatness;
                 res_spectral_centroid(row) = feat.spectral_centroid;
+                res_carrier_sideband_ratio(row) = feat.carrier_sideband_ratio;
+                res_amp_variance(row)      = feat.amp_variance;
+                res_amp_kurtosis(row)      = feat.amp_kurtosis;
+                res_phase_variance(row)    = feat.phase_variance;
             end
         end
 
@@ -182,12 +190,17 @@ T = table( ...
     res_peak_psd,          ...
     res_spectral_flatness, ...
     res_spectral_centroid, ...
+    res_carrier_sideband_ratio, ...
+    res_amp_variance, ...
+    res_amp_kurtosis, ...
+    res_phase_variance, ...
     'VariableNames', { ...
         'ModType',       'IsDigital',       'ChannelType', ...
         'InputSNR_dB',   'Trial',           'BER', ...
         'BER_Reliable',  'ReceivedSNR_dB',  'OutputSNR_dB', ...
         'PacketLossRate','BW_10dB',         'PeakPSD_dB', ...
-        'SpectralFlatness','SpectralCentroid'});
+        'SpectralFlatness','SpectralCentroid', ...
+        'CarrierSidebandRatio', 'AmpVariance', 'AmpKurtosis', 'PhaseVariance'});
 
 save('ground_truth_dataset.mat', 'T', 'params', 'snr_range');
 writetable(T, 'ground_truth_dataset.csv');
@@ -238,17 +251,39 @@ function [out1, out2] = call_demod(mb, mod_name, rx_sig, params, ref)
 end
 
 function feat = compute_spectral_features(signal, fs)
-%COMPUTE_SPECTRAL_FEATURES  FFT/PSD-based features for the twin's input.
+%COMPUTE_SPECTRAL_FEATURES  Advanced physics-based features.
 %
 %   Returns a struct with:
-%     .peak_psd_db       — peak of the one-sided PSD  (dB)
-%     .bw_3db            — 3 dB bandwidth              (Hz)
-%     .spectral_flatness — Wiener entropy (geometric / arithmetic mean of PSD)
-%     .spectral_centroid — power-weighted average frequency (Hz)
+%     .peak_psd_db             — peak of the one-sided PSD  (dB)
+%     .bw_10db                 — Occupied Bandwidth (99% power) (Hz)
+%     .spectral_flatness       — Wiener entropy (geometric / arithmetic mean of PSD)
+%     .spectral_centroid       — power-weighted average frequency (Hz)
+%     .carrier_sideband_ratio  — Power at fc vs total power (identifies DSBTC)
+%     .amp_variance            — Variance of instantaneous amplitude
+%     .amp_kurtosis            — Kurtosis of instantaneous amplitude
+%     .phase_variance          — Variance of instantaneous phase derivative (helps separate BPSK/QPSK)
 
-    % Normalize signal to unit power to make features invariant to absolute receive power
+    % 1. Time-Domain Envelope Features
+    % Using Hilbert transform to get the analytic signal
+    analytic = hilbert(signal);
+    
+    % Amplitude features
+    env = abs(analytic);
+    % Normalize envelope by its mean to make variance scale-invariant
+    env_norm = env / (mean(env) + eps);
+    feat.amp_variance = var(env_norm);
+    feat.amp_kurtosis = kurtosis(env_norm);
+    
+    % Phase feature: variance of the derivative of the unwrapped phase
+    % BPSK has 180 deg jumps, QPSK has 90 deg jumps, FM has continuous smooth phase
+    inst_phase = unwrap(angle(analytic));
+    phase_deriv = diff(inst_phase);
+    feat.phase_variance = var(phase_deriv);
+
+    % Normalize signal to unit power to make frequency features invariant to absolute receive power
     signal = signal / std(signal);
 
+    % 2. Frequency-Domain Features
     N = length(signal);
     S = abs(fftshift(fft(signal))).^2 / N;       % periodogram PSD
     f = (-N/2 : N/2-1) * (fs / N);
@@ -263,25 +298,15 @@ function feat = compute_spectral_features(signal, fs)
 
     % Find peak frequency
     [peak_val, peak_idx] = max(S_p_smooth);
-    f_peak = f_p(peak_idx);
-
+    
     % Peak PSD (dB)
     feat.peak_psd_db = 10*log10(peak_val + eps);
 
-    % 10 dB bandwidth (frequencies where PSD >= peak/10)
-    % Restrict search window to f_peak +/- 5 kHz to prevent catching 
-    % far-away spurious noise spikes at low SNR
-    window = (f_p >= max(0, f_peak - 5000)) & (f_p <= f_peak + 5000);
-    S_p_window = S_p_smooth(window);
-    f_window   = f_p(window);
-
-    tenth_peak = peak_val / 10;
-    above      = S_p_window >= tenth_peak;
-    if any(above)
-        f_above      = f_window(above);
-        feat.bw_10db = f_above(end) - f_above(1);
-    else
-        feat.bw_10db = 0;
+    % Occupied Bandwidth (99% power bandwidth) using robust obw function
+    try
+        feat.bw_10db = obw(signal, fs);
+    catch
+        feat.bw_10db = 0; % Fallback if signal is completely NaN or 0
     end
 
     % Spectral flatness (Wiener entropy)  ∈ [0, 1]
@@ -298,5 +323,19 @@ function feat = compute_spectral_features(signal, fs)
         feat.spectral_centroid = sum(f_p .* S_p) / total;
     else
         feat.spectral_centroid = 0;
+    end
+    
+    % Carrier-to-Sideband Ratio (CSR)
+    % Specifically target fc = 10000 Hz, calculate power in narrow 50 Hz bin
+    % vs total power. This is the exact discriminator for AM-DSB-SC vs TC.
+    fc = 10000;
+    bin_width = 50;
+    carrier_bin = (f_p >= fc - bin_width) & (f_p <= fc + bin_width);
+    carrier_power = sum(S_p(carrier_bin));
+    
+    if total > 0
+        feat.carrier_sideband_ratio = carrier_power / total;
+    else
+        feat.carrier_sideband_ratio = 0;
     end
 end
