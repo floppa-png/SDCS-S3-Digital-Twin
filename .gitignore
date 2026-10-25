@@ -30,7 +30,20 @@ Thumbs.db
 *.pptx
 ~$*.pptx
 ~$*.docx
+*.docx
 AI_Drug_Toxicity_Prediction_Project_Explanation*.docx
+
+# LaTeX documents & build artifacts
+*.tex
+figures/
+*.aux
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk
 
 # MATLAB temporary files
 *.asv
