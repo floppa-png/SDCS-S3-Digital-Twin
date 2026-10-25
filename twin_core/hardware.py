@@ -111,8 +111,15 @@ class PlutoBridge:
         """Ensure pluto_native_bridge.py background process is running."""
         if self.link_up:
             return True
+        if os.environ.get("PLUTO_BRIDGE_MANAGED") == "1":
+            return True
         try:
             with socket.create_connection(('127.0.0.1', 8090), timeout=0.2):
+                return True
+        except Exception:
+            pass
+        try:
+            with socket.create_connection(('127.0.0.1', 8099), timeout=0.2):
                 return True
         except Exception:
             pass

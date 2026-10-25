@@ -26,8 +26,25 @@ def main():
         bridge_py = radioconda_python if os.path.exists(radioconda_python) else python_exe
         print(f" -> Launching Pluto Native Bridge ({bridge_py})...")
         p_bridge = subprocess.Popen([bridge_py, "pluto_native_bridge.py"])
-        time.sleep(2.0)
         env["SDCS_MODE"] = "pluto"
+        env["PLUTO_BRIDGE_MANAGED"] = "1"
+        
+        # Wait until Pluto bridge XML-RPC is online and ready
+        import socket
+        t_wait = time.time()
+        bridge_ready = False
+        while time.time() - t_wait < 8.0:
+            if p_bridge.poll() is not None:
+                print(f"[Error] Pluto native bridge exited prematurely (code {p_bridge.poll()}).")
+                break
+            try:
+                with socket.create_connection(('127.0.0.1', 8090), timeout=0.3):
+                    bridge_ready = True
+                    break
+            except Exception:
+                time.sleep(0.3)
+        if bridge_ready:
+            print(" -> Pluto hardware bridge is online and ready!")
     else:
         print("\n[Mode] High-Fidelity Simulation Mode (Default)")
 

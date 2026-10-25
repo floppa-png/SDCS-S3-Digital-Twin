@@ -29,6 +29,17 @@ import adi
 
 class PlutoNativeBridge:
     def __init__(self, uri=None, fs=1000000, fc=2400000000, rx_gain=60, tx_atten=5):
+        # Single-instance process lock on port 8099: prevent duplicate bridge collision
+        import socket
+        self._lock_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._lock_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            self._lock_sock.bind(('127.0.0.1', 8099))
+            self._lock_sock.listen(1)
+        except Exception:
+            print("[PlutoNative] Notice: Another Pluto bridge process is already running. Exiting duplicate process.", flush=True)
+            sys.exit(0)
+
         self.samp_rate = int(fs)
         self.center_freq = int(fc)
         self.rx_gain = int(rx_gain)
@@ -37,16 +48,16 @@ class PlutoNativeBridge:
         self.running = False
         self.sdr_lock = threading.RLock()
         
-        # Candidate connection URIs (priority to Ethernet-over-USB IP)
-        self.candidate_uris = []
-        if uri:
-            self.candidate_uris.append(uri)
-        self.candidate_uris.extend(["ip:192.168.2.1", "ip:pluto.local", "default"])
-        
-        self.sdr = None
-        self.uri = None
-        self._connect_sdr()
-        
+        # XML-RPC server on 8090 initialized immediately so listeners can verify bridge presence
+        try:
+            self.rpc_server = SimpleXMLRPCServer(('127.0.0.1', 8090), allow_none=True, logRequests=False)
+            self.rpc_server.register_instance(self)
+            self.rpc_thread = threading.Thread(target=self.rpc_server.serve_forever, daemon=True, name="PlutoRPC")
+            self.rpc_thread.start()
+        except Exception as e:
+            print(f"[PlutoNative] XML-RPC server bind notice: {e}", flush=True)
+            self.rpc_server = None
+
         # ZeroMQ sockets
         self.ctx = zmq.Context()
         self.push_sock = self.ctx.socket(zmq.PUSH)
@@ -57,16 +68,16 @@ class PlutoNativeBridge:
         self.pull_sock.setsockopt(zmq.RCVHWM, 8)
         self.pull_sock.setsockopt(zmq.RCVTIMEO, 50)
         self.pull_sock.connect("tcp://127.0.0.1:5556")
+
+        # Candidate connection URIs (priority to Ethernet-over-USB IP)
+        self.candidate_uris = []
+        if uri:
+            self.candidate_uris.append(uri)
+        self.candidate_uris.extend(["ip:192.168.2.1", "ip:pluto.local", "default"])
         
-        # XML-RPC server on 8090
-        try:
-            self.rpc_server = SimpleXMLRPCServer(('127.0.0.1', 8090), allow_none=True, logRequests=False)
-            self.rpc_server.register_instance(self)
-            self.rpc_thread = threading.Thread(target=self.rpc_server.serve_forever, daemon=True, name="PlutoRPC")
-            self.rpc_thread.start()
-        except Exception as e:
-            print(f"[PlutoNative] XML-RPC server bind notice: {e}", flush=True)
-            self.rpc_server = None
+        self.sdr = None
+        self.uri = None
+        self._connect_sdr()
 
     def _connect_sdr(self):
         """Thread-safe connection and configuration of the ADALM-PLUTO device."""
@@ -284,6 +295,11 @@ class PlutoNativeBridge:
         if self.rpc_server:
             try:
                 threading.Thread(target=self.rpc_server.shutdown, daemon=True).start()
+            except Exception:
+                pass
+        if hasattr(self, '_lock_sock') and self._lock_sock:
+            try:
+                self._lock_sock.close()
             except Exception:
                 pass
         try:
