@@ -223,6 +223,16 @@
         </div>
 
         <div class="toolbar-group">
+          <button type="button" class="btn btn-dossier" id="btn-export-dossier" title="Export printable Telecommunication Link Dossier & Cyber-Physical Security Audit Report">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <span>Export Link Dossier</span>
+          </button>
           <button type="button" class="btn" id="btn-reset-stats">Reset Stats</button>
         </div>
       </div>
@@ -716,6 +726,7 @@
           <div class="twin-rec-info">
             <h3>Digital Twin Recommendation</h3>
             <div class="twin-rec-message" id="twin-rec-text">Evaluating optimal physical link trade-offs...</div>
+            <div class="twin-rec-rationale" id="twin-rec-rationale">Rationale: Analyzing physical channel constraints...</div>
             <div class="twin-rec-sub" id="twin-rec-details">Confidence: <span id="twin-confidence">--%</span> · Link Optimization Engine</div>
           </div>
           <div>
@@ -830,6 +841,49 @@
     </div>
 
   </main>
+
+  <!-- Modal: Link Dossier & Security Audit Report (Printable PDF) -->
+  <div class="modal-backdrop" id="modal-dossier" style="display:none;" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge-icon">📑</span>
+          <div>
+            <div class="modal-title">Telecommunication Link Dossier & Cyber-Physical Audit</div>
+            <div class="modal-subtitle">Official snapshot of link telemetry, physical twin rationale, and security event logs</div>
+          </div>
+        </div>
+        <div class="modal-header-actions">
+          <div class="dossier-window-picker">
+            <label for="select-dossier-window">Audit Log Scope:</label>
+            <select id="select-dossier-window" class="custom-select">
+              <option value="boot" selected>Full Session (Since Engine Boot)</option>
+              <option value="300">Last 5 Minutes</option>
+              <option value="900">Last 15 Minutes</option>
+              <option value="1800">Last 30 Minutes</option>
+              <option value="3600">Last 1 Hour</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-print-dossier" title="Open Browser Print Dialog to Save as Clean PDF">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span>Print / Save PDF</span>
+          </button>
+          <button type="button" class="btn" id="btn-close-dossier">✕ Close</button>
+        </div>
+      </div>
+      <div class="modal-body" id="dossier-printable-area">
+        <div id="dossier-content">
+          <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+            Generating Link Dossier Telemetry & Audit Logs...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- JavaScript Modules -->
   <script src="{{ url_for('static', filename='js/charts.js') }}?v={{ version }}"></script>

@@ -58,18 +58,22 @@ class Engine:
         self._last_adapted_to: Optional[str] = None
         self._suboptimal_count: int = 0
         
-        # Cyber-Physical Security & FDIA Random Timer
+        # Cyber-Physical Security & FDIA Tracking
+        self.boot_time: float = time.time()
+        self.fdia_injected_count: int = 0
+        self.fdia_detected_count: int = 0
+        self.fdia_mitigated_count: int = 0
         self.random_fdia_enabled: bool = False
         self.random_fdia_next_s: float = 0.0
         self._last_terminal_fdia_report: float = 0.0
         self.random_fdia_thread: Optional[threading.Thread] = None
         
-        # Event Log
-        self.event_log = deque(maxlen=50)
+        # Operational Event Log Ring Buffer (enlarged for audit reports)
+        self.event_log = deque(maxlen=300)
         
         # Telemetry & Callbacks
         self.last_frame_telemetry: Dict[str, Any] = {}
-        self.last_twin_payload: Dict[str, Any] = {}
+        self.last_twin_payload: Dict[str, Any] = self.twin.evaluate(self.config, scenario_preset=self.active_scenario)
         self.last_measured_score = 0
         
         self.on_frame_emit: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -149,6 +153,76 @@ class Engine:
                 'events': list(self.event_log)[:15]
             }
 
+    def get_dossier(self, window: str = 'boot') -> Dict[str, Any]:
+        """Compile a comprehensive physical link dossier and cyber-physical security audit report."""
+        now = time.time()
+        uptime_sec = round(now - self.boot_time, 1)
+        
+        # Filter event log by user-selected time window
+        events = list(self.event_log)
+        if window and window != 'boot':
+            try:
+                w_sec = float(window)
+                events = [e for e in events if (now - e.get('timestamp', now)) <= w_sec]
+            except (ValueError, TypeError):
+                pass
+                
+        with self.lock:
+            active_cfg = self.config.to_dict()
+            cur_mod = self.config.modulation
+            fdia_active = getattr(self.config, 'fdia_active', False)
+            
+        telemetry = self.last_frame_telemetry or {}
+        twin_info = self.last_twin_payload
+        if not twin_info:
+            twin_info = self.twin.evaluate(self.config, scenario_preset=getattr(self, 'active_scenario', None))
+            self.last_twin_payload = twin_info
+        
+        m, s = divmod(int(uptime_sec), 60)
+        h, m = divmod(m, 60)
+        uptime_str = f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
+        
+        injected = self.fdia_injected_count
+        mitigated = self.fdia_mitigated_count
+        rate_pct = round((mitigated / max(1, injected)) * 100, 1) if injected > 0 else 100.0
+        
+        return {
+            'generated_at': time.strftime("%Y-%m-%d %H:%M:%S"),
+            'boot_at': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.boot_time)),
+            'uptime': uptime_str,
+            'uptime_seconds': uptime_sec,
+            'window': window,
+            'mode': self.mode.upper(),
+            'link_up': self.bridge.link_up if self.mode == 'pluto' else True,
+            'scenario': {
+                'id': self.active_scenario,
+                'name': SCENARIO_METADATA.get(self.active_scenario, {}).get('name', self.active_scenario),
+                'desc': SCENARIO_METADATA.get(self.active_scenario, {}).get('desc', '')
+            },
+            'security': {
+                'fdia_active': fdia_active,
+                'status': 'COMPROMISED (ACTIVE JAMMING)' if fdia_active else 'SECURE / AUTHENTIC',
+                'injected_count': injected,
+                'detected_count': self.fdia_detected_count,
+                'mitigated_count': mitigated,
+                'mitigation_rate_pct': rate_pct
+            },
+            'current_link': {
+                'modulation': cur_mod,
+                'score': self.last_measured_score,
+                'metrics': telemetry.get('metrics', {}),
+                'config': active_cfg
+            },
+            'twin': {
+                'best': twin_info.get('best', cur_mod),
+                'confidence': twin_info.get('confidence', 0),
+                'rationale': twin_info.get('rationale', ''),
+                'fidelity': twin_info.get('fidelity', {}),
+                'ranking': twin_info.get('ranking', [])
+            },
+            'events': events
+        }
+
     def update_config(self, updates: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         """Validate and apply partial configuration updates (POST /api/config)."""
         clean, errors = validate_params(updates, allow_modulation=False)
@@ -183,8 +257,10 @@ class Engine:
         if mod not in MODULATIONS:
             return False, f"Unknown modulation: {mod}"
             
+        prev_mod = self.config.modulation
+        is_attack = getattr(self.config, 'fdia_active', False)
         with self.lock:
-            if self.config.modulation == mod:
+            if prev_mod == mod:
                 return True, "No change"
                 
             # If active scenario is set, verify modulation compatibility
@@ -205,6 +281,12 @@ class Engine:
             self.twin._cache.clear()
             self.bridge.flush()
             
+        if is_attack and prev_mod != mod and mod == 'FSK':
+            self.fdia_mitigated_count += 1
+            self.log_event("fdia_mitigated", f"Threat Safely Diverted: Operator migration to FSK non-coherent signaling (Mitigation #{self.fdia_mitigated_count})", {
+                'from': prev_mod, 'to': 'FSK', 'mitigation_count': self.fdia_mitigated_count
+            })
+
         self.log_event("modulation_change", f"Modulation switched to {mod}")
         if self.on_config_emit:
             self.on_config_emit({'config': self.config.to_dict(), 'cfg_version': self.cfg_version})
@@ -257,6 +339,14 @@ class Engine:
             'prev_score': prev_score,
             'target_score': target_score
         }
+        
+        is_attack = getattr(self.config, 'fdia_active', False)
+        if is_attack and prev_mod != best_mod and best_mod == 'FSK':
+            self.fdia_mitigated_count += 1
+            self.log_event("fdia_mitigated", f"Threat Safely Diverted: Autonomous migration to FSK non-coherent signaling (Mitigation #{self.fdia_mitigated_count})", {
+                'from': prev_mod, 'to': 'FSK', 'mitigation_count': self.fdia_mitigated_count
+            })
+            
         self.log_event("apply", f"Twin Recommendation Applied: {prev_mod} -> {best_mod} (+{predicted_gain} pts)", data)
         if self.on_config_emit:
             self.on_config_emit({'config': self.config.to_dict(), 'cfg_version': self.cfg_version})
@@ -327,12 +417,16 @@ class Engine:
             
         if prev != bool(active):
             if active:
-                self._terminal_log_fdia("ATTACK_START", {"trigger": trigger})
+                self.fdia_injected_count += 1
+                self._terminal_log_fdia("ATTACK_START", {"trigger": trigger, "attack_count": self.fdia_injected_count})
+                self.log_event("fdia_attack_start", f"Malicious FDIA Cyber Attack Injected ({trigger}) [Attack #{self.fdia_injected_count}]", {
+                    'trigger': trigger, 'attack_count': self.fdia_injected_count
+                })
             else:
                 self._terminal_log_fdia("ATTACK_STOP", {"trigger": trigger})
+                self.log_event("fdia_attack_stop", f"FDIA Attack Ceased ({trigger})", {'trigger': trigger})
                 
         status_str = "ACTIVATED" if active else "DEACTIVATED"
-        self.log_event("fdia", f"FDIA Cyber Attack {status_str} ({trigger})", {'fdia_active': self.config.fdia_active})
         if self.on_config_emit:
             self.on_config_emit({
                 'config': self.config.to_dict(),
@@ -488,13 +582,21 @@ class Engine:
                 now_t = time.time()
                 if is_attack_active and (now_t - self._last_terminal_fdia_report >= 3.0):
                     self._last_terminal_fdia_report = now_t
+                    self.fdia_detected_count += 1
                     self._terminal_log_fdia("ANOMALY_DETECTED", {
                         "mod": cfg.modulation,
                         "trust": metrics.get('trust_score', 0),
                         "psr": metrics.get('psr', 0.0),
                         "crc": rx_res.get('header_valid', False),
                         "evm": metrics.get('evm_rms', 0.0),
-                        "ber": metrics.get('ber', 0.0)
+                        "ber": metrics.get('ber', 0.0),
+                        "detection_count": self.fdia_detected_count
+                    })
+                    self.log_event("fdia_anomaly_detected", f"In-band Anomaly Identified on {cfg.modulation} (PSR={metrics.get('psr', 0.0):.2f}, Trust={metrics.get('trust_score', 0)}%) [Detection #{self.fdia_detected_count}]", {
+                        'mod': cfg.modulation,
+                        'trust': metrics.get('trust_score', 0),
+                        'psr': metrics.get('psr', 0.0),
+                        'detection_count': self.fdia_detected_count
                     })
                 
                 # Visualizations

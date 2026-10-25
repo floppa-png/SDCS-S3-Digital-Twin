@@ -88,6 +88,11 @@ def index():
 def get_state():
     return jsonify(engine.get_state())
 
+@app.route('/api/dossier', methods=['GET'])
+def get_dossier():
+    window = request.args.get('window', 'boot')
+    return jsonify(engine.get_dossier(window))
+
 @app.route('/api/config', methods=['POST'])
 def update_config():
     data = request.get_json(silent=True)

@@ -94,12 +94,18 @@ class DigitalTwin:
         curves = self._generate_ber_curves(eval_cfg)
         
         elapsed_ms = (time.perf_counter() - t_start) * 1000.0
-        
+
+        # Physical Rationale synthesis for recommendation
+        rationale = self._synthesize_rationale(eval_cfg, best, ranking, scenario_preset)
+        for r in ranking:
+            r['rationale'] = self._candidate_rationale(r['mod'], eval_cfg, is_best=(r['mod'] == best))
+
         payload = {
             'cfg_version': getattr(cfg, 'cfg_version', 1),
             'ranking': ranking,
             'best': best,
             'confidence': confidence,
+            'rationale': rationale,
             'eval_time_ms': round(elapsed_ms, 1),
             'curves': curves
         }
@@ -110,6 +116,76 @@ class DigitalTwin:
         self._cache[cfg_key] = payload
         
         return payload
+
+    def _synthesize_rationale(self, cfg: TxConfig, best: str, ranking: List[Dict[str, Any]], scenario_preset: Optional[str]) -> str:
+        """Derive an explainable physical rationale for the top-ranked recommendation."""
+        is_fdia = getattr(cfg, 'fdia_active', False)
+        if is_fdia:
+            if best == 'FSK':
+                return "Cyber Jamming / FDIA Detected: Dual-tone non-coherent FSK envelope detection bypasses Costas PLL pull-off and ignores pilot phase spoofing."
+            elif best == 'FM':
+                return "In-band Jamming Active: Wideband FM limiter discards swept-carrier amplitude distortion and recovers audio subcarrier."
+            else:
+                return "In-band Attack Active: Autonomous defense selecting orthogonal signal trajectory to preserve link availability."
+
+        # Scenario-specific physical rationales
+        if scenario_preset == 'deep_space':
+            if best == 'BPSK':
+                return "Deep Space AWGN Limit: Antipodal 180° phase separation maximizes Euclidean distance (d_min = 2√Eb) under extreme power-starved thermal noise."
+            elif best == 'QPSK':
+                return "Thermal Noise Margin: Quadrature phase tracking balances 2.0 b/s/Hz spectral efficiency within acceptable bit error bounds."
+        elif scenario_preset == 'urban_cellular':
+            if best == 'QPSK':
+                return "Rayleigh Multipath Channel: Constant-modulus QPSK with RRC Nyquist filtering maintains robust symbol decisions against selective fading nulls."
+            elif best == 'BPSK':
+                return "Severe Fading Fallback: BPSK maximizes antipodal noise margin against heavy multipath phase dispersion."
+        elif scenario_preset == 'tactical_ew':
+            if best == 'FSK':
+                return "Electronic Warfare: Orthogonal tone spacing evades swept-carrier jamming; non-coherent detector requires zero carrier phase synchronization."
+        elif scenario_preset == 'leo_satellite':
+            if best in ('BPSK', 'QPSK'):
+                return f"LEO Orbital Dynamics: Wide AFC tracking bandwidth accommodates high Doppler shift ({cfg.doppler_hz:.0f} Hz) without carrier cycle slips."
+        elif scenario_preset == 'hf_skywave':
+            if best in ('8-PSK', 'QPSK', 'BPSK'):
+                return "Ionospheric Coherence Limit: Symbol rate matched to multipath spread to mitigate inter-symbol interference (ISI)."
+        elif scenario_preset == 'broadcast_audio':
+            if best == 'FM':
+                return "Hi-Fi Audio Fidelity: Wideband angle modulation achieves 20 Hz–15 kHz flat audio bandwidth with FM capture effect quieting."
+        elif scenario_preset == 'tactical_am':
+            if best == 'AM':
+                return "Tactical AM Interoperability: Standard double-sideband envelope demodulation enables low-complexity legacy avionics recovery."
+
+        # General physics heuristics based on physical channel impairments:
+        if cfg.channel.lower() == 'rayleigh':
+            return f"Multipath Rayleigh Fading: {best} provides optimal trade-off between symbol constellation Euclidean distance and channel coherence."
+        elif cfg.snr_db < 5.0:
+            return f"Power-Limited Link ({cfg.snr_db:.1f} dB SNR): {best} antipodal signaling minimizes required Eb/N0 to maintain packet lock."
+        elif abs(cfg.cfo_hz) > 1000.0:
+            return f"High Doppler / CFO ({cfg.cfo_hz:+.0f} Hz): {best} receiver loop maintains stable synchronization without phase ambiguity."
+        else:
+            return f"Spectral Efficiency Trade-off: {best} maximizes data rate while respecting {cfg.alloc_bw/1000:.0f} kHz allocated channel bandwidth."
+
+    def _candidate_rationale(self, mod: str, cfg: TxConfig, is_best: bool = False) -> str:
+        """Physical suitability rationale for each modulation candidate."""
+        is_fdia = getattr(cfg, 'fdia_active', False)
+        if is_fdia:
+            if mod == 'FSK':
+                return "Non-coherent energy detection immune to phase perturbation & swept jamming"
+            elif mod == 'FM':
+                return "Receiver limiter strips envelope amplitude modulation distortion"
+            else:
+                return "Vulnerable to swept-carrier jamming and carrier loop phase pull-off"
+        
+        rationales = {
+            'BPSK': "Antipodal 180° geometry yields maximum Euclidean distance (d_min=2√Eb) under AWGN",
+            'QPSK': "Quadrature 4-phase constellation balances 2.0 b/s/Hz spectral fit and Rayleigh multipath resilience",
+            'ASK': "Non-coherent envelope detection with low hardware power consumption",
+            'FSK': "Dual-tone orthogonal signaling with high phase jitter tolerance",
+            'AM_DSBSC': "Suppressed carrier transmission maximizing power efficiency for voice links",
+            'AM_DSBTC': "Full carrier envelope modulation for legacy low-complexity envelope detectors",
+            'FM': "Wideband angle modulation with high audio fidelity and noise capture effect"
+        }
+        return rationales.get(mod, "Standard communication profile")
 
     def _evaluate_analytic(self, mod: str, plan: LinkPlan, cfg: TxConfig, scenario_cfg: Optional[TxConfig] = None) -> Dict[str, Any]:
         """Closed-form analytical evaluation incorporating physical link trade-offs and impairment limits."""

@@ -383,6 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Recommendation card
     bestModulation = twin.best;
     const recText = document.getElementById('twin-rec-text');
+    const recRationale = document.getElementById('twin-rec-rationale');
     const recDetails = document.getElementById('twin-rec-details');
     const btnApply = document.getElementById('btn-apply-best');
 
@@ -411,6 +412,10 @@ document.addEventListener('DOMContentLoaded', () => {
           else btnApply.classList.remove('btn-pulse');
         }
       }
+    }
+
+    if (recRationale) {
+      recRationale.textContent = `Physical Rationale: ${twin.rationale || 'Optimizing Euclidean distance and receiver loop tracking under active channel constraints.'}`;
     }
 
     if (recDetails) {
